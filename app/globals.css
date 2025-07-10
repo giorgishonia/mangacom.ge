@@ -1,0 +1,406 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Import high-quality modern fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap');
+
+/* Add custom font-3 */
+@font-face {
+  font-family: 'CustomFont';
+  src: url('/fonts/font-3.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --sidebar-width: 16rem;
+  --sidebar-width-icon: 4rem;
+  --sidebar-background: 0 0% 3%;
+  --sidebar-foreground: 240 10% 95%;
+  --sidebar-primary: 255 92% 76%;
+  --sidebar-primary-foreground: 240 10% 3.9%;
+  --sidebar-accent: 240 10% 15.9%;
+  --sidebar-accent-foreground: 240 10% 95.9%;
+  --sidebar-border: 240 10% 15.9%;
+  --sidebar-ring: 260 100% 70%;
+  
+  /* Animation speeds */
+  --transition-fast: 150ms;
+  --transition-normal: 250ms;
+  --transition-slow: 350ms;
+  
+  /* Colors */
+  --primary-accent: 260, 100%, 70%;
+  --secondary-accent: 217, 100%, 65%;
+}
+
+body {
+  @apply bg-[#070707] text-white;
+  font-family: 'CustomFont', 'Noto Sans Georgian', 'Noto Sans JP', 'Inter', sans-serif;
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+/* Typography - Update to use the custom font for everything */
+h1, h2, h3, h4, h5, h6, p, span, div, button, input, select, textarea {
+  font-family: 'CustomFont', 'Noto Sans Georgian', 'Noto Sans JP', 'Inter', sans-serif;
+  letter-spacing: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2.5rem;
+}
+
+h2 {
+  font-size: 1.75rem;
+}
+
+/* Custom scrollbar for the entire site */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;     /* Firefox */
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+  
+  /* Adds a cursor grab style for draggable elements */
+  .cursor-grab {
+    cursor: grab;
+    user-select: none;
+  }
+  
+  .cursor-grab:active {
+    cursor: grabbing;
+  }
+
+  /* Enhanced shadow for cards */
+  .card-shadow {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 4px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Text glow effect */
+  .text-glow {
+    text-shadow: 0 0 15px hsla(var(--primary-accent) / 0.4);
+  }
+  
+  /* Title gradient text */
+  .text-gradient {
+    background: linear-gradient(to right, hsl(var(--primary-accent)), hsl(var(--secondary-accent)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Scrollable container with custom height */
+  .scrollable-content {
+    max-height: 150px;
+    overflow-y: auto;
+    padding-right: 10px;
+    mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  }
+  
+  /* Glass effect */
+  .glass-effect {
+    background: rgba(15, 15, 15, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Enhanced image card hover effect */
+  .anime-card {
+    transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  
+  .anime-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  }
+  
+  .anime-card img {
+    transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  
+  .anime-card:hover img {
+    transform: scale(1.05);
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  /* Custom card shadow for depth */
+  .card-shadow {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Glow effect for headings */
+  .text-glow {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 3%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 260 100% 70%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 100% 65%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 260 100% 70%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 50.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 260 100% 70%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-[#070707] text-foreground;
+  }
+  
+  /* Improved focus states */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+  }
+  
+  /* Button improvements */
+  button {
+    @apply transition-all duration-200;
+  }
+}
+
+/* Add these styles to fix the sidebar and scrollbar issues */
+.group\/sidebar-wrapper {
+  background-color: transparent !important;
+}
+
+/* Animation for the loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Animation for cards */
+@keyframes card-hover {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-8px); }
+}
+
+/* Pulse animation */
+@keyframes pulse {
+  0% { opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Pill buttons */
+.pill-button {
+  @apply rounded-full px-4 py-1.5 font-medium transition-all;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pill-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.pill-button.active {
+  background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--secondary)));
+  color: white;
+  box-shadow: 0 5px 15px hsla(var(--primary) / 0.3);
+  border-color: transparent;
+}
+
+/* Enhanced gradient overlay */
+.image-gradient-overlay {
+  background: linear-gradient(
+    to bottom,
+    rgba(7, 7, 7, 0.9) 0%,
+    rgba(7, 7, 7, 0.4) 25%,
+    rgba(7, 7, 7, 0.2) 50%,
+    rgba(7, 7, 7, 0.6) 75%,
+    rgba(7, 7, 7, 1) 100%
+  );
+}
+
+/* Category navigation */
+.category-nav {
+  @apply flex overflow-x-auto py-2 space-x-3 no-scrollbar;
+  scroll-behavior: smooth;
+  padding-bottom: 1rem;
+  position: relative;
+}
+
+.category-button {
+  @apply px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.category-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.category-button.active {
+  background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--secondary)));
+  box-shadow: 0 5px 15px hsla(var(--primary) / 0.3);
+  color: white;
+  border-color: transparent;
+}
+
+/* Card details */
+.card-details {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.7) 50%, transparent 100%);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.anime-card:hover .card-details {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Add styles to handle manga reader full-screen mode */
+body.manga-reader-open {
+  overflow: hidden;
+  position: relative;
+}
+
+/* Ensure the manga reader fills the entire viewport */
+body.manga-reader-open .manga-reader-container {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+/* ===================  NEW DESIGN ENHANCEMENTS  =================== */
+/* Subtle moving background texture */
+@keyframes drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 1000px 0; }
+}
+.bg-noise-animated {
+  background-image: url('/noise-texture.png');
+  opacity: 0.04;
+  animation: drift 60s linear infinite;
+}
+
+/* Neon accent (purple → indigo) */
+.neon-accent {
+  background: radial-gradient(circle at 50% 50%, hsla(var(--primary-accent) / 0.35) 0%, transparent 70%);
+  box-shadow: 0 0 12px hsla(var(--primary-accent) / 0.6), 0 0 30px hsla(var(--primary-accent) / 0.15) inset;
+}
+
+/* Sidebar icon glow on hover */
+.sidebar-icon {
+  transition: color var(--transition-normal), transform var(--transition-normal), filter var(--transition-normal);
+}
+.sidebar-icon:hover {
+  transform: translateY(-2px) scale(1.1);
+  filter: drop-shadow(0 0 6px hsl(var(--primary-accent)));
+  color: hsl(var(--primary-accent));
+}
+
+/* Rating badge */
+.badge-rating {
+  @apply text-xs font-semibold py-0.5 px-1.5 rounded-full flex items-center gap-0.5 bg-black/60 backdrop-blur-sm border border-white/10;
+}
+
+/* Card glass effect utility */
+.card-glass {
+  background: rgba(20, 20, 20, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@keyframes float-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-bounce-slow {
+  animation: float-bounce 4s ease-in-out infinite;
+}
+
+/* Description fade mask only on md+ */
+@media (min-width: 768px) {
+  .desc-mask {
+    mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+  }
+}
