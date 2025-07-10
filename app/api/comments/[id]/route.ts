@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
+// Import other dependencies as needed
 
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   // Check authentication
-  const session = await getServerSession(authOptions)
+  const supabase = createClient()
+  const { data: session } = await supabase.auth.getSession()
   
   if (!session || !session.user) {
     return NextResponse.json(

@@ -1,7 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
-import { NextAuthProvider } from '@/providers/auth-provider'
 import { SupabaseAuthProvider } from '@/components/supabase-auth-provider'
 import { UnifiedAuthProvider } from '@/components/unified-auth-provider'
 import { MaintenanceRunner } from '@/components/maintenance-runner'
@@ -78,15 +77,13 @@ export default function RootLayout({
         <link rel="icon" href="/images/manganimelogo.png" type="image/png" />
       </head>
       <body className={inter.className} suppressHydrationWarning>
-        <NextAuthProvider>
-          <SupabaseAuthProvider>
-            <UnifiedAuthProvider>
-              <MaintenanceRunner />
-              {children}
-              <Toaster richColors position="top-right" theme="dark" />
-            </UnifiedAuthProvider>
-          </SupabaseAuthProvider>
-        </NextAuthProvider>
+        <SupabaseAuthProvider>
+          <UnifiedAuthProvider>
+            <MaintenanceRunner />
+            {children}
+            <Toaster richColors position="top-right" theme="dark" />
+          </UnifiedAuthProvider>
+        </SupabaseAuthProvider>
       </body>
     </html>
   )

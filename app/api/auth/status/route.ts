@@ -1,42 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import { getServerSession } from "next-auth/next";
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
     
-    // Get the Supabase session
-    const { data: { session: supabaseSession } } = await supabase.auth.getSession();
-    
-    // Check if user has a profile with admin role
-    let isAdmin = false;
-    let userId = null;
-    
-    if (supabaseSession) {
-      userId = supabaseSession.user.id;
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-        
-      isAdmin = profile?.role === 'admin';
+    if (!session) {
+      return NextResponse.json({ authenticated: false })
     }
     
-    return NextResponse.json({
-      isAuthenticated: !!supabaseSession,
-      userId,
-      isAdmin,
-      supabaseUser: !!supabaseSession
-    });
+    return NextResponse.json({ 
+      authenticated: true,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
+        image: session.user.user_metadata.avatar_url || null
+      }
+    })
   } catch (error) {
-    console.error("Auth status error:", error);
+    console.error('Auth status error:', error)
     return NextResponse.json(
-      { error: "Failed to check authentication status" },
+      { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   }
 } 

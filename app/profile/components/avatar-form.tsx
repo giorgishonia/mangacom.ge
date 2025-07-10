@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
-import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useSupabaseClient } from '@supabase/auth-helpers-react'
+import { useAuth } from '@/components/supabase-auth-provider'
+import { useUnifiedAuth } from '@/components/unified-auth-provider'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'

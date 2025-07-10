@@ -1,6 +1,5 @@
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
 
 // Comment schema for validation
@@ -11,6 +10,11 @@ const commentSchema = z.object({
 })
 
 export async function GET(request: Request) {
+  // Use Supabase for authentication
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+
   const { searchParams } = new URL(request.url)
   const contentId = searchParams.get('contentId')
   const contentType = searchParams.get('contentType')
@@ -59,15 +63,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  // Check authentication
-  const session = await getServerSession(authOptions)
-  
-  if (!session || !session.user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    )
-  }
+  // Use Supabase for authentication
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
 
   try {
     const body = await request.json()
@@ -89,9 +88,9 @@ export async function POST(request: Request) {
     // Return mock response
     const newComment = {
       id: `comment-${Date.now()}`,
-      userId: session.user.id,
-      userName: session.user.name,
-      userImage: session.user.image,
+      userId,
+      userName: session?.user?.name,
+      userImage: session?.user?.image,
       contentId,
       contentType,
       text,

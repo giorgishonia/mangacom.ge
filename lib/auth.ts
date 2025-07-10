@@ -1,5 +1,4 @@
 import { supabase } from './supabase'
-import { NextAuthOptions } from "next-auth"
 import { createClient } from '@/lib/supabase/server'
 
 // Refresh auth session
@@ -600,40 +599,6 @@ export async function getUserFavorites(userId: string, contentType?: 'anime' | '
   } catch (error) {
     console.error('Get favorites error:', error)
     return { success: false, error }
-  }
-}
-
-// This is a minimal auth setup to make the comments feature work
-// In a real app, you would connect this to your actual authentication system
-export const authOptions: NextAuthOptions = {
-  providers: [
-    // CredentialsProvider removed - Use Supabase Auth for email/password
-  ],
-  session: {
-    strategy: "jwt"
-  },
-  pages: {
-    signIn: "/login"
-  },
-  callbacks: {
-    async session({ session, token }) {
-      if (token && session.user) {
-        // Make sure we always have an ID in the session
-        session.user.id = token.sub as string
-        
-        // Add empty defaults for user_metadata (to match Supabase structure)
-        if (!session.user.name) {
-          session.user.name = "User"
-        }
-      }
-      return session
-    },
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-      }
-      return token
-    }
   }
 }
 

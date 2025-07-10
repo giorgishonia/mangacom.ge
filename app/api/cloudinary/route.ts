@@ -1,23 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { v2 as cloudinary } from 'cloudinary';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 
 // Configure Cloudinary
 cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
   secure: true
 });
 
-export async function GET(req: NextRequest) {
+export async function GET(req: any) {
   // Check if user is authenticated
-  const session = await getServerSession(authOptions);
+  const supabase = createClient();
+  const { data: session } = await supabase.auth.getSession();
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   // Allow unauthenticated access in development mode
-  if (!session?.user && !isDevelopment) {
+  if (!session?.session?.user && !isDevelopment) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('Cloudinary config:', {
-      cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       folder: folder
     });
 
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
     // Transform the results to a more usable format
     const images = result.resources.map((resource: any) => ({
       id: resource.public_id,
-      url: resource.secure_url || `https://res.cloudinary.com/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload/${resource.public_id}`,
+      url: resource.secure_url || `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/image/upload/${resource.public_id}`,
       filename: resource.filename || resource.public_id.split('/').pop()
     }));
 

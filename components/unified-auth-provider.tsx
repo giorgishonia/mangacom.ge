@@ -1,11 +1,9 @@
 "use client"
 
 import { createContext, useContext, ReactNode, useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
 import { useAuth as useSupabaseAuth } from "@/components/supabase-auth-provider"
-import { getCurrentUserId, getCurrentUsername, getCurrentAvatarUrl } from "@/lib/auth-utils"
 
-// Unified auth type that combines both auth systems
+// Unified auth type (now just using Supabase)
 type UnifiedAuthContextType = {
   isAuthenticated: boolean
   isLoading: boolean
@@ -18,8 +16,7 @@ type UnifiedAuthContextType = {
 const UnifiedAuthContext = createContext<UnifiedAuthContextType | undefined>(undefined)
 
 export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
-  // Get auth data from both providers
-  const { data: nextAuthSession, status: nextAuthStatus } = useSession()
+  // Get auth data from Supabase provider
   const { user: supabaseUser, isLoading: supabaseLoading } = useSupabaseAuth()
   
   // Unified auth state
@@ -32,21 +29,22 @@ export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
     email: null
   })
   
-  // Update the unified auth state whenever either auth system changes
+  // Update the unified auth state whenever Supabase auth changes
   useEffect(() => {
-    // Determine if we're still loading from either auth system
-    const isLoading = supabaseLoading || nextAuthStatus === "loading"
+    // Determine if we're still loading
+    const isLoading = supabaseLoading
     
-    // Determine authentication from either system
-    const isAuthenticated = nextAuthStatus === "authenticated" || !!supabaseUser
+    // Determine authentication from Supabase
+    const isAuthenticated = !!supabaseUser
     
-    // Get the user ID, username, and avatar from either system
-    const userId = getCurrentUserId(nextAuthSession, supabaseUser)
-    const username = getCurrentUsername(nextAuthSession, supabaseUser)
-    const avatarUrl = getCurrentAvatarUrl(nextAuthSession, supabaseUser)
+    // Get user details from Supabase user
+    const userId = supabaseUser?.id || null
+    const username = supabaseUser?.user_metadata?.name || 
+                   supabaseUser?.email?.split('@')[0] || null
+    const avatarUrl = supabaseUser?.user_metadata?.avatar_url || null
     
-    // Get email from either system
-    const email = nextAuthSession?.user?.email || supabaseUser?.email || null
+    // Get email from Supabase
+    const email = supabaseUser?.email || null
     
     // Update the unified auth state
     setUnifiedAuth({
@@ -60,13 +58,12 @@ export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
     
     // Log the auth state for debugging
     console.log("Auth state updated:", {
-      nextAuthStatus,
       supabaseUser: !!supabaseUser,
       isAuthenticated,
       userId
     })
     
-  }, [nextAuthSession, nextAuthStatus, supabaseUser, supabaseLoading])
+  }, [supabaseUser, supabaseLoading])
   
   return (
     <UnifiedAuthContext.Provider value={unifiedAuth}>
