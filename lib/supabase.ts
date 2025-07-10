@@ -18,10 +18,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     fetch: fetch
   },
-  // Disable realtime subscriptions to prevent loop issues in production
+  // Disable Supabase Realtime entirely – we rely on REST polling instead
   realtime: {
+    enabled: false,
     params: {
-      eventsPerSecond: 0 // Setting to 0 disables realtime subscriptions
+      eventsPerSecond: 0
     }
   }
 })
@@ -38,6 +39,7 @@ export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
     fetch: fetch
   },
   realtime: {
+    enabled: false,
     params: {
       eventsPerSecond: 0
     }

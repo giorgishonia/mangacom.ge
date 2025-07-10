@@ -157,7 +157,7 @@ export function AppSidebar() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
   const [notifLoadError, setNotifLoadError] = useState(false);
-  const [notifSubscription, setNotifSubscription] = useState<any>(null)
+  // Removed Supabase Realtime subscription state – polling only
   
   // Check if we're on mobile - only run on client side
   useEffect(() => {
@@ -223,90 +223,21 @@ export function AppSidebar() {
     };
   }, [user]);
   
-  // Realtime notifications subscription – update count instantly
+  // Notifications polling – Supabase Realtime is disabled
   useEffect(() => {
     if (!user) return;
 
-    let didTimeout = false;
     let pollInterval: NodeJS.Timeout | null = null;
 
-    try {
-      // Try to create a channel - if realtime is disabled this will fail gracefully
-      const channel = supabase
-        .channel(`notifications-${user.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            setUnreadCount((c) => c + 1);
-            setNotifications((prev) => [payload.new as unknown as Notification, ...prev]);
-          },
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            console.log('[notifications] realtime subscribed');
-          }
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.warn('[notifications] realtime subscription failed:', status);
-            channel.unsubscribe();
-            // Fall back to polling on subscription failure
-            startPolling();
-          }
-        });
-
-      // Additional manual timeout in case callback never fires
-      const timer = setTimeout(() => {
-        if (!channel.state || channel.state !== 'joined' && !didTimeout) {
-          didTimeout = true;
-          console.warn('[notifications] realtime subscription timed out – unsubscribing');
-          channel.unsubscribe();
-          // Fall back to polling on timeout
-          startPolling();
-        }
-      }, 5000);
-
-      setNotifSubscription(channel);
-
-      return () => {
-        clearTimeout(timer);
-        channel.unsubscribe();
-        if (pollInterval) clearInterval(pollInterval);
-      };
-    } catch (error) {
-      // Realtime is disabled or errored, use polling instead
-      console.log('[notifications] realtime not available, using polling instead:', error);
-      startPolling();
-      
-      return () => {
-        if (pollInterval) clearInterval(pollInterval);
-      };
-    }
-    
-    // Function to start polling for notifications
-    function startPolling() {
-      // Initial fetch
-      fetchLatestNotifications();
-      
-      // Set up polling interval (every 30 seconds)
-      pollInterval = setInterval(fetchLatestNotifications, 30000);
-    }
-    
-    // Function to fetch latest notifications
     async function fetchLatestNotifications() {
       if (!user) return;
-      
       try {
         const { success, count } = await getUnreadNotificationCount(user.id);
         if (success) {
           setUnreadCount(count || 0);
         }
-        
-        // If notifications panel is open, also refresh the notifications list
+
+        // If the notifications panel is open, also refresh the notifications list
         if (isNotificationsOpen) {
           const { success, notifications } = await getUserNotifications(user.id);
           if (success && notifications) {
@@ -317,6 +248,14 @@ export function AppSidebar() {
         console.error('[notifications] Error fetching notifications:', error);
       }
     }
+
+    // Initial fetch and interval
+    fetchLatestNotifications();
+    pollInterval = setInterval(fetchLatestNotifications, 30000); // every 30s
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, [user, isNotificationsOpen]);
   
   // Function to toggle search modal
