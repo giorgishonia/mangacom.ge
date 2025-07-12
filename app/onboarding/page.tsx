@@ -33,15 +33,12 @@ const onboardingSchema = z.object({
   username: z.string()
     .min(3, "მომხმარებლის სახელი უნდა იყოს 3-20 სიმბოლო")
     .max(20, "მომხმარებლის სახელი უნდა იყოს 3-20 სიმბოლო")
-    .regex(/^[a-zA-Z0-9_]+$/, "მომხმარებლის სახელი შეიძლება შეიცავდეს მხოლოდ ლათინურ ასოებს, ციფრებს და ქვედა ტირეს")
-    // Add refine for availability check - runs AFTER other checks pass
+    .regex(/^[a-zA-Z0-9_.]+$/, "მომხმარებლის სახელი შეიძლება შეიცავდეს მხოლოდ ლათინურ ასოებს, ციფრებს, ქვედა ტირეს და წერტილს")
     .refine(async (username) => {
-      // Skip check if username is too short (already handled by min)
       if (username.length < 3) return true; 
       return await checkUsernameAvailability(username);
     }, {
       message: "მომხმარებლის სახელი დაკავებულია.",
-      // Optionally specify path: ['username'] if needed, but usually inferred
     }),
   interests: z.array(z.string()).optional().default([]), // e.g., ["anime", "manga"]
   location: z.string().max(100, "მდებარეობა ძალიან გრძელია").optional().nullable(),
