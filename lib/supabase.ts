@@ -11,21 +11,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Create a single supabase client for interacting with your database
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    storageKey: 'SupabaseAuth',
   },
-  global: {
-    fetch: fetch
-  },
-  // Disable Supabase Realtime entirely – we rely on REST polling instead
   realtime: {
-    enabled: false,
     params: {
-      eventsPerSecond: 0
-    }
-  }
-})
+      eventsPerSecond: 0, // Disable realtime entirely
+    },
+  },
+});
 
 // Create a public client for consistent behavior regardless of auth state
 // This is used for operations where we want to avoid RLS differences between anon vs auth

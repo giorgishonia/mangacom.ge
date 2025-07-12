@@ -55,34 +55,41 @@ async function syncProgressToSupabase(progress: ReadingProgress) {
   const userId = await getCurrentUserIdAsync()
   if (!userId) return // Not logged-in; nothing to sync
 
-  try {
-    const { error } = await supabase
-      .from(READING_HISTORY_TABLE)
-      .upsert(
-        {
-          user_id: userId,
-          manga_id: progress.mangaId,
-          chapter_id: progress.chapterId,
-          chapter_number: progress.chapterNumber,
-          chapter_title: progress.chapterTitle,
-          current_page: progress.currentPage,
-          total_pages: progress.totalPages,
-          last_read: new Date(progress.lastRead).toISOString(),
-          manga_title: progress.mangaTitle,
-          manga_thumbnail: progress.mangaThumbnail,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_id,manga_id,chapter_id',
-        }
-      )
+  // Add retry with backoff
+  let retries = 0;
+  const maxRetries = 3;
+  while (retries < maxRetries) {
+    try {
+      const { error } = await supabase
+        .from(READING_HISTORY_TABLE)
+        .upsert(
+          {
+            user_id: userId,
+            manga_id: progress.mangaId,
+            chapter_id: progress.chapterId,
+            chapter_number: progress.chapterNumber,
+            chapter_title: progress.chapterTitle,
+            current_page: progress.currentPage,
+            total_pages: progress.totalPages,
+            last_read: new Date(progress.lastRead).toISOString(),
+            manga_title: progress.mangaTitle,
+            manga_thumbnail: progress.mangaThumbnail,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,manga_id,chapter_id',
+          }
+        )
 
-    if (error) {
-      console.error('Failed to sync reading progress to Supabase:', error)
+      if (error) throw error;
+      return; // Success
+    } catch (error) {
+      console.error('Sync failed:', error);
+      retries++;
+      await new Promise(resolve => setTimeout(resolve, 1000 * retries)); // Backoff
     }
-  } catch (err) {
-    console.error('Unexpected error syncing reading progress:', err)
   }
+  console.error('Max retries reached for sync');
 }
 
 // Get all reading history

@@ -141,54 +141,13 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       }
     })()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-         console.log(`Auth state changed: ${_event}`, newSession ? `User: ${newSession.user.id}` : "No session")
-         if (!isMounted) return;
-         
-         setSession(newSession)
-         const currentUser = newSession?.user || null
-         setUser(currentUser)
-         
-         try {
-           if (currentUser && typeof currentUser.id === 'string') {
-             await syncUserProfile(currentUser)
-             
-             if (_event !== 'SIGNED_OUT') {
-               const userProfileForRedirect = await getProfileForUser(currentUser.id)
-               console.log(`Auth state change (${_event}): onboarding status:`, userProfileForRedirect?.has_completed_onboarding)
-               console.log(`Current path: ${pathname}`)
-               
-               if (userProfileForRedirect && userProfileForRedirect.has_completed_onboarding === false && 
-                   pathname && !['/login', '/signup', '/onboarding', '/api/auth/callback', '/auth/callback'].includes(pathname)) {
-                 console.log(`Redirecting user on auth change to /onboarding: ${currentUser.id}`)
-                 
-                 const lastRedirectTime = sessionStorage.getItem('lastRedirectTime')
-                 const currentTime = Date.now()
-                 const isRecentRedirect = lastRedirectTime && (currentTime - parseInt(lastRedirectTime)) < 3000
-                 
-                 if (!isRecentRedirect) {
-                   console.log("No recent redirection, redirecting to onboarding now")
-                   sessionStorage.setItem('lastRedirectTime', currentTime.toString())
-                   router.push('/onboarding')
-                 } else {
-                   console.log("Skipping redirection due to recent redirect")
-                 }
-               }
-             }
-           }
-         } catch (err) {
-           console.error('Error during auth state change handling:', err);
-         } finally {
-           if (isMounted && isLoading) setIsLoading(false)
-         }
-      }
-    )
+    // Remove realtime auth listener
+    // Instead, rely on manual session checks
 
     return () => {
       console.log("=== Cleaning up AuthProvider auth state listeners ===")
       isMounted = false;
-      subscription.unsubscribe()
+      // subscription.unsubscribe(); // This line is removed as per the edit hint.
     }
   }, [pathname, router, isLoading])
 

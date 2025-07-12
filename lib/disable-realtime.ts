@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 
+// This file is deprecated as realtime is fully removed
+/*
 /**
  * Temporarily disables Realtime subscriptions for the current page
  * Use this on pages where real-time updates are not needed
@@ -36,4 +38,5 @@ export function enableRealtime(): void {
   } catch (err) {
     console.error('Error enabling Realtime:', err);
   }
-} 
+}
+*/ 
