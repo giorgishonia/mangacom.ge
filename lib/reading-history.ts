@@ -128,13 +128,69 @@ async function syncProgressToSupabase(progress: ReadingProgress): Promise<void> 
   }
 }
 
+// Clean up duplicate manga entries (keep only the most advanced progress per manga)
+function cleanupDuplicateEntries(history: ReadingProgress[]): ReadingProgress[] {
+  const mangaMap = new Map<string, ReadingProgress>();
+  
+  for (const entry of history) {
+    const existingEntry = mangaMap.get(entry.mangaId);
+    
+    if (!existingEntry) {
+      // First entry for this manga
+      mangaMap.set(entry.mangaId, entry);
+    } else {
+      // Compare progress and keep the more advanced one
+      let shouldReplace = false;
+      
+      if (entry.chapterNumber > existingEntry.chapterNumber) {
+        shouldReplace = true;
+      } else if (entry.chapterNumber === existingEntry.chapterNumber && 
+                 entry.currentPage > existingEntry.currentPage) {
+        shouldReplace = true;
+      } else if (entry.chapterNumber === existingEntry.chapterNumber && 
+                 entry.currentPage === existingEntry.currentPage &&
+                 entry.lastRead > existingEntry.lastRead) {
+        // Same progress but more recent timestamp
+        shouldReplace = true;
+      }
+      
+      if (shouldReplace) {
+        mangaMap.set(entry.mangaId, entry);
+      }
+    }
+  }
+  
+  // Convert back to array and sort by lastRead (most recent first)
+  return Array.from(mangaMap.values()).sort((a, b) => b.lastRead - a.lastRead);
+}
+
 // Get all reading history
 export function getReadingHistory(): ReadingProgress[] {
   if (typeof window === "undefined") return [];
   
   try {
     const history = localStorage.getItem(READING_HISTORY_KEY);
-    return history ? JSON.parse(history) : [];
+    if (!history) return [];
+    
+    const parsedHistory = JSON.parse(history) as ReadingProgress[];
+    
+    // Check if we need to clean up duplicates
+    const uniqueMangaIds = new Set(parsedHistory.map(item => item.mangaId));
+    if (uniqueMangaIds.size < parsedHistory.length) {
+      // We have duplicates, clean them up
+      const cleanedHistory = cleanupDuplicateEntries(parsedHistory);
+      
+      // Save the cleaned history back to localStorage
+      localStorage.setItem(READING_HISTORY_KEY, JSON.stringify(cleanedHistory));
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🧹 Cleaned up reading history: ${parsedHistory.length} → ${cleanedHistory.length} entries`);
+      }
+      
+      return cleanedHistory;
+    }
+    
+    return parsedHistory;
   } catch (error) {
     console.error("Failed to get reading history:", error);
     return [];
@@ -172,32 +228,69 @@ export function updateReadingProgress(progress: ReadingProgress): void {
 
     const history = getReadingHistory();
     
-    // Find and remove existing entry for this specific chapter
-    const filteredHistory = history.filter(
-      item => !(item.mangaId === validatedProgress.mangaId && item.chapterId === validatedProgress.chapterId)
-    );
+    // Remove ALL existing entries for this manga (not just this chapter)
+    const filteredHistory = history.filter(item => item.mangaId !== validatedProgress.mangaId);
     
-    // Add the new progress to the beginning (most recent)
-    const updatedHistory = [validatedProgress, ...filteredHistory];
+    // Check if this is more advanced progress than what we currently have
+    const existingMangaProgress = history.find(item => item.mangaId === validatedProgress.mangaId);
     
-    // Keep only the 100 most recent entries (increased from 50)
-    const limitedHistory = updatedHistory.slice(0, 100);
+    let shouldUpdate = true;
+    let finalProgress = validatedProgress;
+    
+    if (existingMangaProgress) {
+      // Only update if this is further progress (higher chapter number, or same chapter with higher page)
+      if (validatedProgress.chapterNumber < existingMangaProgress.chapterNumber) {
+        shouldUpdate = false;
+        // Keep existing progress but update thumbnail and title in case they changed
+        finalProgress = {
+          ...existingMangaProgress,
+          mangaTitle: validatedProgress.mangaTitle, // Update title in case it changed
+          mangaThumbnail: validatedProgress.mangaThumbnail, // Update thumbnail
+          lastRead: Math.max(existingMangaProgress.lastRead, validatedProgress.lastRead) // Update to most recent timestamp
+        };
+      } else if (validatedProgress.chapterNumber === existingMangaProgress.chapterNumber && 
+                 validatedProgress.currentPage < existingMangaProgress.currentPage) {
+        shouldUpdate = false;
+        // Keep existing progress but update thumbnail and title in case they changed
+        finalProgress = {
+          ...existingMangaProgress,
+          mangaTitle: validatedProgress.mangaTitle, // Update title in case it changed
+          mangaThumbnail: validatedProgress.mangaThumbnail, // Update thumbnail
+          lastRead: Math.max(existingMangaProgress.lastRead, validatedProgress.lastRead) // Update to most recent timestamp
+        };
+      } else {
+        // This is more advanced progress, use the new progress data
+        finalProgress = validatedProgress;
+      }
+    }
+    
+    // Add the progress to the beginning (most recent) - always update to refresh metadata
+    const updatedHistory = [finalProgress, ...filteredHistory];
+    
+    // Keep only the 50 most recent entries (one per manga)
+    const limitedHistory = updatedHistory.slice(0, 50);
     
     // Save to localStorage
     localStorage.setItem(READING_HISTORY_KEY, JSON.stringify(limitedHistory));
 
-    // Debug logging for long strip mode
+    // Debug logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📖 Reading progress updated: ${validatedProgress.mangaTitle} - Chapter ${validatedProgress.chapterNumber}, Page ${validatedProgress.currentPage + 1}/${validatedProgress.totalPages}`);
+      if (shouldUpdate) {
+        console.log(`📖 Reading progress updated: ${finalProgress.mangaTitle} - Chapter ${finalProgress.chapterNumber}, Page ${finalProgress.currentPage + 1}/${finalProgress.totalPages}`);
+      } else {
+        console.log(`📖 Progress not updated (not more advanced) but metadata refreshed: ${finalProgress.mangaTitle} - Chapter ${finalProgress.chapterNumber}, Page ${finalProgress.currentPage + 1}/${finalProgress.totalPages}`);
+      }
     }
 
-    // Fire-and-forget Supabase sync with improved error handling
-    syncProgressToSupabase(validatedProgress).catch(error => {
-      // Silent fail for sync, but log in development
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Failed to sync progress to Supabase:', error);
-      }
-    });
+    // Fire-and-forget Supabase sync with improved error handling (only if progress was updated)
+    if (shouldUpdate) {
+      syncProgressToSupabase(finalProgress).catch(error => {
+        // Silent fail for sync, but log in development
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Failed to sync progress to Supabase:', error);
+        }
+      });
+    }
   } catch (error) {
     console.error("Failed to update reading history:", error);
   }

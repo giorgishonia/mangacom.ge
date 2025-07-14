@@ -1004,3 +1004,42 @@ export async function incrementContentView(contentId: string): Promise<{ success
   }
 }
 // --- END NEW FUNCTION --- 
+
+// Get chapter counts by language for multiple content items
+export async function getChapterCountsByLanguage(contentIds: string[]) {
+  try {
+    if (contentIds.length === 0) return {};
+
+    const { data, error } = await supabasePublic
+      .from('chapters')
+      .select('content_id, language')
+      .in('content_id', contentIds);
+
+    if (error) throw error;
+
+    const counts: Record<string, { georgian: number; english: number }> = {};
+    
+    // Initialize counts for all content IDs
+    contentIds.forEach(id => {
+      counts[id] = { georgian: 0, english: 0 };
+    });
+
+    // Count chapters by language
+    if (data) {
+      data.forEach((chapter: any) => {
+        if (counts[chapter.content_id]) {
+          if (chapter.language === 'ge') {
+            counts[chapter.content_id].georgian++;
+          } else if (chapter.language === 'en') {
+            counts[chapter.content_id].english++;
+          }
+        }
+      });
+    }
+
+    return counts;
+  } catch (error) {
+    console.error('Error fetching chapter counts by language:', error);
+    return {};
+  }
+} 

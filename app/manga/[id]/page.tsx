@@ -72,6 +72,7 @@ import { VipPromoBanner } from "@/components/ads/vip-promo-banner";
 import { v4 as uuidv4 } from 'uuid'
 import { LogoLoader } from '@/components/logo-loader'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Flag from 'react-world-flags'
 
 // Animation variants
 const pageVariants = {
@@ -193,13 +194,99 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
   const englishLoadingRef = useRef(false);
 
   const BATCH_SIZE = 50; // Load chapters in batches for better performance
+  const CHAPTERS_CACHE_KEY = 'manganime-chapters-cache';
+
+  // Chapter cache management functions
+  const saveChaptersToCache = useCallback((mangaId: string, chapters: any[]) => {
+    try {
+      const cacheData = {
+        mangaId,
+        chapters,
+        timestamp: Date.now(),
+        version: '1.0' // For future compatibility
+      };
+      localStorage.setItem(CHAPTERS_CACHE_KEY, JSON.stringify(cacheData));
+      if (DEV_LOG) console.log(`💾 Saved ${chapters.length} chapters to cache for manga ${mangaId}`);
+    } catch (error) {
+      console.error('Failed to save chapters to cache:', error);
+    }
+  }, []);
+
+  const loadChaptersFromCache = useCallback((mangaId: string): any[] | null => {
+    try {
+      const cached = localStorage.getItem(CHAPTERS_CACHE_KEY);
+      if (!cached) return null;
+
+      const cacheData = JSON.parse(cached);
+      
+      // Check if cache is for the current manga
+      if (cacheData.mangaId !== mangaId) {
+        if (DEV_LOG) console.log(`🗑️ Cache is for different manga (${cacheData.mangaId}), ignoring`);
+        return null;
+      }
+
+      // Check if cache is not too old (24 hours)
+      const isExpired = Date.now() - cacheData.timestamp > 24 * 60 * 60 * 1000;
+      if (isExpired) {
+        if (DEV_LOG) console.log('⏰ Cache expired, will fetch fresh data');
+        localStorage.removeItem(CHAPTERS_CACHE_KEY);
+        return null;
+      }
+
+      if (DEV_LOG) console.log(`📦 Loaded ${cacheData.chapters.length} chapters from cache for manga ${mangaId}`);
+      return cacheData.chapters;
+    } catch (error) {
+      console.error('Failed to load chapters from cache:', error);
+      // Clear corrupted cache
+      localStorage.removeItem(CHAPTERS_CACHE_KEY);
+      return null;
+    }
+  }, []);
+
+  const clearChaptersCache = useCallback(() => {
+    try {
+      localStorage.removeItem(CHAPTERS_CACHE_KEY);
+      if (DEV_LOG) console.log('🧹 Chapters cache cleared');
+    } catch (error) {
+      console.error('Failed to clear chapters cache:', error);
+    }
+  }, []);
 
   // Bulk load all English chapters with progress tracking
   const loadAllEnglishChapters = useCallback(async () => {
     if (englishLoadingRef.current || !mangaId) return;
     
     englishLoadingRef.current = true;
-    setLoadingText("English თავები იტვირთება...");
+    
+    // Check cache first
+    const cachedChapters = loadChaptersFromCache(mangaId);
+    if (cachedChapters && cachedChapters.length > 0) {
+      setLoadingText("კეშიდან იტვირთება...");
+      setLoadingProgress(50);
+      
+      // Use cached chapters
+      setAllEnglishChapters(cachedChapters);
+      setEnglishLoadingComplete(true);
+      setLoadingProgress(90);
+      setLoadingText("დასრულდა...");
+      
+      // Update manga data with cached chapters
+      setMangaData((prev: any) => {
+        if (!prev) return prev;
+        const georgianChapters = (prev.chaptersData || []).filter((c: any) => c.language !== 'en');
+        const allChaptersData = [...georgianChapters, ...cachedChapters];
+        return { ...prev, chaptersData: allChaptersData };
+      });
+      
+      setTimeout(() => {
+        setLoadingProgress(100);
+      }, 300);
+      
+      englishLoadingRef.current = false;
+      return;
+    }
+    
+    setLoadingText("ინგლისური თავები იტვირთება...");
     
     try {
       let allChapters: any[] = [];
@@ -275,6 +362,11 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
       setLoadingProgress(90);
       setLoadingText("დასრულდა...");
       
+      // Save chapters to cache (this will replace any existing cache)
+      if (allChapters.length > 0) {
+        saveChaptersToCache(mangaId, allChapters);
+      }
+      
       // Update manga data with all English chapters
       setMangaData((prev: any) => {
         if (!prev) return prev;
@@ -296,7 +388,7 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
     } finally {
       englishLoadingRef.current = false;
     }
-  }, [mangaId, setLoadingText, setLoadingProgress, setAllEnglishChapters, setEnglishLoadingComplete, setMangaData]);
+  }, [mangaId, setLoadingText, setLoadingProgress, setAllEnglishChapters, setEnglishLoadingComplete, setMangaData, loadChaptersFromCache, saveChaptersToCache]);
 
   // Remove the old pagination-based loading functions and effects
   // const loadEnglishChapters = useCallback(async () => { ... }); // REMOVED
@@ -505,6 +597,27 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
         });
       viewIncrementedRef.current = true; 
     }
+  }, [mangaId]);
+
+  // Cache management: Load from cache on mount, clear on unmount if switching manga
+  useEffect(() => {
+    // When mangaId changes, check if we need to clear cache for different manga
+    const handleCacheManagement = () => {
+      try {
+        const cached = localStorage.getItem(CHAPTERS_CACHE_KEY);
+        if (cached) {
+          const cacheData = JSON.parse(cached);
+          // If cache is for a different manga, it will be replaced when new chapters load
+          if (cacheData.mangaId !== mangaId) {
+            if (DEV_LOG) console.log(`🔄 Manga changed from ${cacheData.mangaId} to ${mangaId}, cache will be replaced`);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking cache:', error);
+      }
+    };
+
+    handleCacheManagement();
   }, [mangaId]);
 
   // Add useEffect for admin check within the page component
@@ -1638,8 +1751,14 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
                       {/* Responsive chapter list - SCROLLABLE CONTAINER */}
                       <Tabs value={selectedLanguage} onValueChange={(value) => setSelectedLanguage(value as 'ge' | 'en')} className="w-full">
                         <TabsList className="mb-4 flex justify-start">
-                          <TabsTrigger value="ge" className="px-4 py-1.5 flex items-center gap-2">🇬🇪 ქართული</TabsTrigger>
-                          <TabsTrigger value="en" className={cn("px-4 py-1.5 flex items-center gap-2", !hasEnSupport && 'opacity-70')} >🇬🇧 English</TabsTrigger>
+                          <TabsTrigger value="ge" className="px-4 py-1.5 flex items-center gap-2">
+                            <Flag code="GE" className="h-4 w-4 rounded-sm" />
+                            ქართული
+                          </TabsTrigger>
+                          <TabsTrigger value="en" className={cn("px-4 py-1.5 flex items-center gap-2", !hasEnSupport && 'opacity-70')}>
+                            <Flag code="GB" className="h-4 w-4 rounded-sm" />
+                            English
+                          </TabsTrigger>
                         </TabsList>
                         
                         <TabsContent value="ge">
@@ -1649,7 +1768,7 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
                               <img src="/images/mascot/no-chapters.png" alt="No chapters mascot" className="mx-auto mt-4 w-32 h-32" />
                             </div>
                           ) : (
-                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                            <div className="space-y-3 max-h-[49vh] overflow-y-auto pr-2">
                               {geChapters.map((chapter: any, index: number) => {
                                 const chapterId = chapter.id || `chapter-${chapter.number}`;
                                 const readPercentage = getReadPercentage(mangaId, chapterId);
@@ -1727,7 +1846,7 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
                             !englishLoadingComplete ? (
                               <div className="py-12 flex flex-col items-center justify-center gap-3 text-purple-300">
                                 <Loader2 className="h-6 w-6 animate-spin" />
-                                <span className="text-sm">English თავები იტვირთება...</span>
+                                <span className="text-sm">ინგლისური თავები იტვირთება...</span>
                               </div>
                             ) : (
                               <div className="text-center py-12 border border-dashed border-white/10 rounded-lg bg-black/20 backdrop-blur-sm">
@@ -1736,7 +1855,7 @@ export default function MangaPage({ params }: { params: Promise<{ id: string }> 
                               </div>
                             )
                           ) : (
-                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                            <div className="space-y-3 max-h-[49vh] overflow-y-auto pr-2">
                               {enChapters.map((chapter: any, index: number) => {
                                 const chapterId = chapter.id || `chapter-${chapter.number}`;
                                 const readPercentage = getReadPercentage(mangaId, chapterId);

@@ -1474,7 +1474,7 @@ export default function ComicPage({ params }: { params: { id: string } }) {
                       </div>
                       
                       {/* Responsive chapter list - SCROLLABLE CONTAINER */}
-                      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2"> {/* Added max-h, overflow-y-auto, pr-2 for scrollbar */} 
+                      <div className="space-y-3 max-h-[49vh] overflow-y-auto pr-2"> {/* Added max-h, overflow-y-auto, pr-2 for scrollbar */} 
                         {processedData?.chapterList?.map((chapter: any, index: number) => {
                           const chapterId = chapter.id || `chapter-${chapter.number}`;
                           const readPercentage = getReadPercentage(comicId, chapterId); // Use comicId here

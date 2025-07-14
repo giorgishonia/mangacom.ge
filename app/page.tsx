@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { ContentCardHover } from "@/components/content-card-hover"
 import { TypewriterText } from "@/components/typewriter-text"
 import { MangaView } from "@/components/manga-view"
-import { getAllContent } from "@/lib/content"
+import { getAllContent, getChapterCountsByLanguage } from "@/lib/content"
 import { BannerSkeleton, CategorySkeleton, CarouselSkeleton } from "@/components/ui/skeleton"
 import { ImageSkeleton } from "@/components/image-skeleton"
 import AssistantChat from "@/components/assistant-chat"
@@ -22,6 +22,7 @@ import Image from "next/image"
 import Link from "next/link"
 import NextImage from "next/image"
 import { MangaCard } from "@/components/manga-view"
+import Flag from 'react-world-flags'
 
 // Define interface for content data from our database
 interface ContentData {
@@ -59,6 +60,8 @@ interface FeaturedContentData {
   view_count: number;
   description: string;
   release_year?: number;
+  georgianChapters?: number;
+  englishChapters?: number;
 }
 
 // Animation variants for page transitions
@@ -200,6 +203,13 @@ export default function Home() {
         let transformedManga: any[] = [];
         let transformedComics: any[] = [];
         
+        // Get chapter counts by language for all content
+        const allContentIds = [
+          ...(mangaResponse.success && mangaResponse.content ? mangaResponse.content.map(c => c.id) : []),
+          ...(comicsResponse.success && comicsResponse.content ? comicsResponse.content.map(c => c.id) : [])
+        ];
+        const chapterCounts = await getChapterCountsByLanguage(allContentIds);
+        
         if (mangaResponse.success && mangaResponse.content) {
           transformedManga = mangaResponse.content.map((content: ContentData) => {
             // --- DEBUG: Log raw values before transformation
@@ -233,6 +243,9 @@ export default function Home() {
               });
             }
             
+            // Get chapter counts by language for this content
+            const contentChapterCounts = chapterCounts[content.id] || { georgian: 0, english: 0 };
+            
             return {
               id: content.id,
               // Determine Georgian title from explicit column or alternative_titles
@@ -257,6 +270,8 @@ export default function Home() {
               status: content.status,
               chaptersDisplay: chapterCount > 0 ? `${chapterCount} თავი` : "0 თავი",
               totalChapters: chapterCount,
+              georgianChapters: contentChapterCounts.georgian,
+              englishChapters: contentChapterCounts.english,
               genres: content.genres,
               type: 'manga',
               view_count: content.view_count ?? 0,
@@ -296,6 +311,9 @@ export default function Home() {
               });
             }
             
+            // Get chapter counts by language for this content
+            const contentChapterCounts = chapterCounts[content.id] || { georgian: 0, english: 0 };
+            
             return {
               id: content.id,
               // Determine Georgian title from explicit column or alternative_titles
@@ -304,7 +322,7 @@ export default function Home() {
                   ? content.georgian_title
                   : (Array.isArray(content.alternative_titles)
                       ? (() => {
-                          const geoEntry = content.alternative_titles.find((t: string) => typeof t === 'string' && t.startsWith('georgian:'));
+                          const geoEntry = content.alternative_titles.find((t: string) => t.startsWith('georgian:'));
                           return geoEntry ? geoEntry.substring(9) : null;
                         })()
                       : null);
@@ -320,6 +338,8 @@ export default function Home() {
               status: content.status,
               chaptersDisplay: chapterCount > 0 ? `${chapterCount} თავი` : "0 თავი",
               totalChapters: chapterCount,
+              georgianChapters: contentChapterCounts.georgian,
+              englishChapters: contentChapterCounts.english,
               genres: content.genres,
               type: 'comics',
               publisher: content.publisher || '',
@@ -344,6 +364,8 @@ export default function Home() {
                type: content.type as 'manga' | 'comics',
                chaptersDisplay: content.chaptersDisplay, 
                totalChapters: content.totalChapters,
+               georgianChapters: content.georgianChapters,
+               englishChapters: content.englishChapters,
                rating: content.rating,
                status: content.status,
                genres: content.genres,
@@ -678,7 +700,24 @@ export default function Home() {
                       {featured.type === 'manga' || featured.type === 'comics' ? ( // Combined condition
                         <div className="flex items-center gap-1.5 text-gray-300">
                           <BookOpen className="h-3.5 w-3.5 text-purple-400" />
-                          <span>{featured.chaptersDisplay}</span>
+                          {featured.georgianChapters !== undefined && featured.englishChapters !== undefined ? (
+                            <div className="flex items-center gap-2">
+                              {featured.georgianChapters > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Flag code="GE" style={{ width: '12px', height: '8px' }} />
+                                  <span>{featured.georgianChapters}</span>
+                                </div>
+                              )}
+                              {featured.englishChapters > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <Flag code="GB" style={{ width: '12px', height: '8px' }} />
+                                  <span>{featured.englishChapters}</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span>{featured.chaptersDisplay}</span>
+                          )}
                         </div>
                       ) : null}
                       <div className="flex items-center gap-1.5 text-gray-300">

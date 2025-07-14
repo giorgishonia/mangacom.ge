@@ -13,6 +13,7 @@ import { hasMangaBeenRead, getMangaProgress, getLatestChapterRead, calculateMang
 import { useAuth } from '@/components/supabase-auth-provider'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+import Flag from 'react-world-flags'
 
 // Helper function for drag scrolling
 function setupDragScroll(element: HTMLDivElement | null) {
@@ -117,6 +118,8 @@ interface ContentItem {
   totalPages?: number
   chapterNumber?: number
   readDate?: string
+  georgianChapters?: number;
+  englishChapters?: number;
 }
 
 interface MangaViewProps {
@@ -263,6 +266,9 @@ export function MangaCard({ content, index, isContinueReading = false }: { conte
     `გვ. ${content.currentPage || 0}/${content.totalPages || 0} • თ. ${content.chapterNumber || 0}` :
     content.chapters || (totalChapters > 0 ? `${totalChapters} თავი` : "0 თავი");
     
+  // Check if we have separate Georgian and English chapter counts
+  const hasLanguageChapters = content.georgianChapters !== undefined && content.englishChapters !== undefined;
+    
   // Handle favorite click
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card click
@@ -364,8 +370,25 @@ export function MangaCard({ content, index, isContinueReading = false }: { conte
           )}
           
           {/* Chapter Count Badge */}
-          <div className="absolute bottom-2.5 left-2.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded-lg text-[10px] text-white/90 border border-white/20 shadow-md truncate max-w-[45%]">
-            {chaptersDisplay}
+          <div className="absolute bottom-2.5 left-2.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded-lg text-[10px] text-white/90 border border-white/20 shadow-md max-w-[45%]">
+            {hasLanguageChapters && !isContinueReading ? (
+              <div className="flex items-center gap-1.5">
+                {content.georgianChapters! > 0 && (
+                  <div className="flex items-center gap-0.5">
+                    <Flag code="GE" style={{ width: '10px', height: '7px' }} />
+                    <span>{content.georgianChapters}</span>
+                  </div>
+                )}
+                {content.englishChapters! > 0 && (
+                  <div className="flex items-center gap-0.5">
+                    <Flag code="GB" style={{ width: '10px', height: '7px' }} />
+                    <span>{content.englishChapters}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="truncate">{chaptersDisplay}</span>
+            )}
           </div>
           
           {/* Read Date Badge */}
@@ -544,6 +567,11 @@ export function MangaView({
         const response = await getAllContent(contentType, 50);
         
         if (response.success && response.content) {
+          // Get chapter counts by language for all content
+          const contentIds = response.content.map((c: any) => c.id);
+          const { getChapterCountsByLanguage } = await import('@/lib/content');
+          const chapterCounts = await getChapterCountsByLanguage(contentIds);
+          
           const transformedData = response.content.map((content: any): ContentItem => {
             // Determine Georgian title: check explicit column or extract from alternative_titles
             let georgianTitle: string | null = null;
@@ -556,6 +584,9 @@ export function MangaView({
               }
             }
 
+            // Get language-specific chapter counts
+            const counts = chapterCounts[content.id] || { georgian: 0, english: 0 };
+            
             return {
               id: content.id,
               title: georgianTitle || content.title,
@@ -571,7 +602,9 @@ export function MangaView({
               release_year: content.release_year,
               totalChapters: typeof content.chapters_count === 'number' ? content.chapters_count : 
                  (typeof content.chapters_count === 'string' ? parseInt(content.chapters_count.replace(/[^\d]/g, ''), 10) : 0),
-              view_count: content.view_count ?? 0
+              view_count: content.view_count ?? 0,
+              georgianChapters: counts.georgian,
+              englishChapters: counts.english
             };
           });
           
