@@ -12,6 +12,16 @@ import { getAllContent } from "@/lib/content"
 import { BannerSkeleton, CategorySkeleton, CarouselSkeleton } from "@/components/ui/skeleton"
 import { ImageSkeleton } from "@/components/image-skeleton"
 import AssistantChat from "@/components/assistant-chat"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Filter, SortDesc, Grid, List, X } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { hasMangaBeenRead, getMangaProgress, getRecentlyRead, getLatestChapterRead, calculateMangaProgressByChapter } from "@/lib/reading-history"
+import Image from "next/image"
+import Link from "next/link"
+import NextImage from "next/image"
+import { MangaCard } from "@/components/manga-view"
 
 // Define interface for content data from our database
 interface ContentData {
@@ -71,6 +81,11 @@ const contentVariants = {
   exit: { opacity: 0, transition: { duration: 0.3 } }
 };
 
+const filterVariants = {
+  initial: { opacity: 0, y: -10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } }
+}
+
 // Add a helper function to check if content is favorited
 function isContentFavorited(id: string, type: 'manga' | 'comics'): boolean {
   if (typeof window === 'undefined') return false;
@@ -119,6 +134,21 @@ function toggleContentFavorite(
   }
 }
 
+export function translateStatus(status: string): string {
+  const map: Record<string, string> = {
+    ongoing: "გამოდის",
+    completed: "დასრულებული",
+    hiatus: "შეჩერებული",
+    cancelled: "გაუქმებული",
+    publishing: "გამოდის",
+    on_hold: "შეჩერებული",
+    dropped: "მიტოვებული",
+    reading: "ვკითხულობ",
+    plan_to_read: "წასაკითხი",
+  }
+  return map[status.toLowerCase()] || status
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"manga" | "comics">("manga") // Default to manga
   const [currentFeatured, setCurrentFeatured] = useState(0)
@@ -140,6 +170,13 @@ export default function Home() {
   // Use raw motion values for instantaneous response
   const thumbSpringX = thumbRotateX;
   const thumbSpringY = thumbRotateY;
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'popular' | 'newest' | 'a-z' | 'z-a'>('popular')
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([])
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [recentlyRead, setRecentlyRead] = useState<any[]>([])
 
   // Ensure "ყველა" is set as the default category on initial render
   useEffect(() => {
@@ -296,7 +333,7 @@ export default function Home() {
 
         // FEATURED CONTENT MAPPING
         if (transformedManga.length > 0 || transformedComics.length > 0) {
-          const combinedFeaturedSource = [...transformedManga.slice(0, 3), ...transformedComics.slice(0, 2)].slice(0,5);
+          const combinedFeaturedSource = [...transformedManga.slice(0, 5), ...transformedComics.slice(0, 5)];
           if (combinedFeaturedSource.length > 0) {
              setFeaturedContent(combinedFeaturedSource.map(content => ({
                id: content.id,
@@ -357,7 +394,7 @@ export default function Home() {
       // Preload the next image briefly before transition
       if (activeFeatured.length > 0) {
         const nextIndex = (currentFeatured + 1) % activeFeatured.length;
-        const img = new Image();
+        const img = new window.Image();
         img.src = activeFeatured[nextIndex].bannerImage;
       }
       
@@ -440,6 +477,62 @@ export default function Home() {
     
     setIsFeaturedFavorite(newStatus);
   };
+
+  useEffect(() => {
+    setSearchQuery('')
+    setSortBy('popular')
+    setSelectedGenres([])
+    setFilterOpen(false)
+    setViewMode('grid')
+  }, [activeTab])
+
+  const availableGenres = activeTab === 'manga' ? mangaCategories : comicsCategories
+  let filteredContent = activeTab === 'manga' ? availableManga : availableComics
+  if (searchQuery) {
+    filteredContent = filteredContent.filter(c => 
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.englishTitle && c.englishTitle.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
+  }
+  if (selectedGenres.length > 0) {
+    filteredContent = filteredContent.filter(c => selectedGenres.every(g => c.genres.includes(g)))
+  }
+  switch (sortBy) {
+    case 'popular':
+      filteredContent.sort((a,b) => (b.view_count || 0) - (a.view_count || 0))
+      break
+    case 'newest':
+      filteredContent.sort((a,b) => (b.release_year || 0) - (a.release_year || 0))
+      break
+    case 'a-z':
+      filteredContent.sort((a,b) => a.title.localeCompare(b.title))
+      break
+    case 'z-a':
+      filteredContent.sort((a,b) => b.title.localeCompare(a.title))
+      break
+  }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const history = getRecentlyRead(5)
+      const readItems = history.map(item => ({
+        id: item.mangaId,
+        title: item.mangaTitle,
+        thumbnail: item.mangaThumbnail,
+        chapters: `თავი ${item.chapterNumber}`,
+        status: item.currentPage === item.totalPages ? "დასრულებულია" : "მიმდინარე",
+        readDate: new Date(item.lastRead).toLocaleDateString(),
+        readProgress: Math.round((item.currentPage / item.totalPages) * 100),
+        currentPage: item.currentPage,
+        totalPages: item.totalPages,
+        chapterTitle: item.chapterTitle,
+        chapterNumber: item.chapterNumber,
+      }))
+      setRecentlyRead(readItems)
+    }
+  }, [])
+
+  const router = useRouter()
 
   return (
     <div className="flex min-h-screen bg-[#070707] text-white antialiased">
@@ -590,7 +683,7 @@ export default function Home() {
                       ) : null}
                       <div className="flex items-center gap-1.5 text-gray-300">
                         <Calendar className="h-3.5 w-3.5 text-purple-400" />
-                        <span>{featured.status}</span>
+                        <span>{translateStatus(featured.status)}</span>
                       </div>
                       {featured.view_count !== undefined && (
                         <div className="flex items-center gap-1.5 text-gray-300">
@@ -618,7 +711,7 @@ export default function Home() {
                       variants={heroVariants}
                     >
                       <div 
-                        className="max-h-[120px] w-fit overflow-scroll no-scrollbar"
+                        className="max-h-[90px] md:max-h-[120px] w-fit overflow-scroll no-scrollbar"
                         style={{
                           maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
                           WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)'
@@ -723,33 +816,200 @@ export default function Home() {
                 exit="exit"
                 className=" mx-auto"
               >
-                {activeTab === "manga" && (
-                  <MangaView
-                    selectedCategory={selectedCategory}
-                    setSelectedCategory={setSelectedCategory}
-                    categories={[...mangaCategories]}
-                    hoveredCard={hoveredCard}
-                    setHoveredCard={setHoveredCard}
-                    contentData={availableManga}
-                    contentType='manga'
-                  />
-                )}
-                
-                {activeTab === "comics" && (
-                  <MangaView
-                    selectedCategory={selectedCategory}
-                    setSelectedCategory={setSelectedCategory}
-                    categories={[...comicsCategories]}
-                    hoveredCard={hoveredCard}
-                    setHoveredCard={setHoveredCard}
-                    contentData={availableComics}
-                    contentType='comics'
-                  />
-                )}
+                <m.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  className="flex flex-col"
+                >
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6 z-20">
+                    <h2 className="text-2xl font-bold self-start md:self-center">{activeTab === 'manga' ? 'მანგის' : 'კომიქსის'} ბიბლიოთეკა</h2>
+                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                      <div className="relative w-full sm:w-full md:w-64">
+                        <input
+                          type="text"
+                          placeholder="ძიება..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="bg-black/30 border border-white/10 rounded-full py-2 pl-9 pr-4 text-sm w-full md:w-64 focus:outline-none focus:border-purple-500/50"
+                        />
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="w-full sm:w-auto bg-black/30 border-white/10 rounded-full h-9 flex items-center justify-center sm:justify-start gap-2">
+                            <SortDesc className="h-4 w-4" />
+                            <span>დალაგება</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-40 bg-gray-900/95 backdrop-blur-md border-white/10 text-white">
+                          <DropdownMenuLabel>დალაგების ვარიანტები</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className={sortBy === "popular" ? "bg-purple-500/10 text-purple-400" : ""} onClick={() => setSortBy("popular")}>პოპულარობით</DropdownMenuItem>
+                          <DropdownMenuItem className={sortBy === "newest" ? "bg-purple-500/10 text-purple-400" : ""} onClick={() => setSortBy("newest")}>უახლესი</DropdownMenuItem>
+                          <DropdownMenuItem className={sortBy === "a-z" ? "bg-purple-500/10 text-purple-400" : ""} onClick={() => setSortBy("a-z")}>სათაური (ა-ჰ)</DropdownMenuItem>
+                          <DropdownMenuItem className={sortBy === "z-a" ? "bg-purple-500/10 text-purple-400" : ""} onClick={() => setSortBy("z-a")}>სათაური (ჰ-ა)</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button variant="outline" size="sm" onClick={() => setFilterOpen(!filterOpen)} className={cn("w-full sm:w-auto bg-black/30 border-white/10 rounded-full h-9", filterOpen && "bg-purple-900/20 border-purple-500/30 text-purple-400")}>
+                        <Filter className="h-4 w-4 mr-2" />
+                        <span>ფილტრი</span>
+                      </Button>
+                      <div className="flex md:visible hidden rounded-full overflow-hidden border border-white/10 bg-black/30 w-full sm:w-auto justify-center">
+                        <Button variant="ghost" size="sm" onClick={() => setViewMode("grid")} className={cn("h-9 px-3 rounded-none", viewMode === "grid" ? "bg-white/10 text-white" : "text-gray-400")}>
+                          <Grid className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setViewMode("list")} className={cn("h-9 px-3 rounded-none", viewMode === "list" ? "bg-white/10 text-white" : "text-gray-400")}>
+                          <List className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <AnimatePresence>
+                    {filterOpen && (
+                      <m.div
+                        variants={filterVariants}
+                        initial="initial"
+                        animate="animate"
+                        exit="initial"
+                        className="mb-6 p-4 bg-gradient-to-br from-gray-900/40 to-gray-800/20 backdrop-blur-md rounded-xl border border-white/5 shadow-lg"
+                      >
+                        <div className="flex justify-between items-center mb-3">
+                          <h3 className="font-medium flex items-center">
+                            <Filter className="h-4 w-4 mr-2 text-purple-400" />
+                            ფილტრი ჟანრის მიხედვით
+                          </h3>
+                          {selectedGenres.length > 0 && (
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedGenres([])} className="h-8 text-xs text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+                              ყველას გასუფთავება
+                            </Button>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {availableGenres.map((genre: string) => (
+                            <Badge
+                              key={genre}
+                              variant="outline"
+                              className={cn(
+                                "cursor-pointer hover:bg-white/10 transition-all duration-300",
+                                selectedGenres.includes(genre) 
+                                  ? "bg-purple-500/20 border-purple-500/50 text-purple-400 shadow-glow-sm-purple" 
+                                  : "bg-black/30 hover:border-white/30"
+                              )}
+                              onClick={() => {
+                                if (selectedGenres.includes(genre)) {
+                                  setSelectedGenres(selectedGenres.filter(g => g !== genre))
+                                } else {
+                                  setSelectedGenres([...selectedGenres, genre])
+                                }
+                              }}
+                            >
+                              {genre}
+                              {selectedGenres.includes(genre) && (
+                                <X className="ml-1 h-3 w-3" />
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
+                      </m.div>
+                    )}
+                  </AnimatePresence>
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="text-sm text-gray-400">
+                      ნაპოვნია <span className="text-white font-medium">{filteredContent.length}</span> {activeTab === 'manga' ? 'მანგა' : 'კომიქსი'}
+                      {selectedGenres.length > 0 && (
+                        <> | გაფილტრული <span className="text-purple-400">{selectedGenres.length}</span> {selectedGenres.length !== 1 ? 'ჟანრებით' : 'ჟანრით'}</>
+                      )}
+                      {searchQuery && (
+                        <> | ძიებით "<span className="text-purple-400">{searchQuery}</span>"</>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      დალაგებულია: <span className="text-purple-400">
+                        {sortBy === "popular" ? "პოპულარობით" : 
+                         sortBy === "newest" ? "უახლესით" :
+                         sortBy === "a-z" ? "სათაური (ა-ჰ)" : "სათაური (ჰ-ა)"}
+                      </span>
+                    </div>
+                  </div>
+                  {activeTab === "manga" && (
+                    <MangaView
+                      hoveredCard={hoveredCard}
+                      setHoveredCard={setHoveredCard}
+                      contentData={filteredContent}
+                      contentType='manga'
+                    />
+                  )}
+                  {activeTab === "comics" && (
+                    <MangaView
+                      hoveredCard={hoveredCard}
+                      setHoveredCard={setHoveredCard}
+                      contentData={filteredContent}
+                      contentType='comics'
+                    />
+                  )}
+                </m.div>
               </m.div>
             )}
           </AnimatePresence>
         </div>
+
+        {recentlyRead.length > 0 && (
+  <section className="pt-8 px-4 md:px-8 md:pl-[100px]"
+  >
+    <m.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold flex items-center text-white">
+          კითხვის გაგრძელება
+        </h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-gray-400 hover:text-white group"
+          onClick={() => router.push("/history")}
+        >
+          ყველას ნახვა <ChevronRight className="ml-1 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9 gap-3 md:gap-4">
+        {recentlyRead.map((item, index) => {
+          const mappedItem = {
+            id: item.id,
+            title: item.title,
+            thumbnail: item.thumbnail,
+            genres: [],
+            status: item.status,
+            chapters: `${item.chapterNumber} / ?`,
+            totalChapters: item.totalPages,
+            view_count: 0,
+            release_year: undefined,
+            description: item.chapterTitle,
+            englishTitle: undefined,
+            rating: 0,
+            type: activeTab,
+            currentPage: item.currentPage,
+            totalPages: item.totalPages,
+            chapterNumber: item.chapterNumber,
+            readDate: item.readDate
+          }
+          return (
+            <div key={`recent-${item.id}-${index}`} className="rounded-xl">
+              <MangaCard 
+                content={mappedItem}
+                index={index}
+                isContinueReading={true}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </m.div>
+  </section>
+)}
       </main>
 
       {/* Card hover overlay */} 

@@ -27,13 +27,14 @@ import { ka } from 'date-fns/locale'
 import { v5 as uuidv5 } from 'uuid'
 import { 
   getCommentsByContentId, 
-  getAllComments,
+  getAllComments, 
   addComment, 
   deleteComment, 
   updateComment, 
   Comment,
   ensureCommentsTable,
-  toggleCommentLike
+  toggleCommentLike,
+  getSupabaseAvatarUrl
 } from '@/lib/comments'
 import { toast } from 'sonner'
 import { useUnifiedAuth } from '@/components/unified-auth-provider'
@@ -91,7 +92,7 @@ async function getPaginatedComments(
   limit: number,
   userId?: string | null
 ): Promise<PaginatedCommentsResponse> {
-  console.warn("Using placeholder getPaginatedComments. Implement actual fetching in lib/comments.ts");
+  console.warn("გამოყენებულია პლეისჰოლდერი getPaginatedComments. რეალური ჩატვირთვა განახორციელეთ lib/comments.ts-ში");
   
   // Don't normalize content type here, let the getAllComments function handle it consistently
   const { success, comments, error } = await getAllComments(contentId, contentType, userId);
@@ -113,11 +114,16 @@ interface CommentSectionProps {
   contentType: 'manga' | 'comics'
   sectionVariants?: any
   itemVariants?: any
+  chapterInfo?: {
+    number: number
+    title: string
+  }
 }
 
 export function CommentSection({
   contentId,
   contentType,
+  chapterInfo,
   sectionVariants = {
     initial: { opacity: 0, y: 20 },
     animate: { 
@@ -162,10 +168,18 @@ export function CommentSection({
   const [currentPage, setCurrentPage] = useState(1)
   const [commentsPerPage] = useState(5) // Comments per page
 
-  // Print auth state for debugging
+  // Print auth state and content info for debugging
   useEffect(() => {
-    console.log("CommentSection auth state:", { isAuthenticated, userId, username, authLoading });
-  }, [isAuthenticated, userId, username, authLoading]);
+    console.log("კომენტარების სექციის მდგომარეობა:", { 
+      isAuthenticated, 
+      userId, 
+      username, 
+      authLoading, 
+      contentId, 
+      contentType,
+      chapterInfo 
+    });
+  }, [isAuthenticated, userId, username, authLoading, contentId, contentType, chapterInfo]);
 
   // Load comments for this content
   useEffect(() => {
@@ -242,12 +256,20 @@ export function CommentSection({
 
   // Submit a new comment
   const handlePostComment = async () => {
-    if (!newComment.trim() && !selectedSticker) return
+    if (!newComment.trim() && !selectedSticker) {
+      toast.error("გთხოვთ, შეიყვანოთ კომენტარი ან აირჩიოთ სტიკერი");
+      return;
+    }
+    
+    if (authLoading) {
+      toast.error("გთხოვთ, დაელოდოთ ავტორიზაციის პროცესს");
+      return;
+    }
     
     if (!isAuthenticated || !userId) {
-      toast.error("კომენტარის დასატოვებლად უნდა იყოთ ავტორიზებული.");
-      router.push('/login')
-      return
+      toast.error("კომენტარის დასატოვებლად უნდა იყოთ ავტორიზებული");
+      router.push('/login');
+      return;
     }
   
     try {
@@ -292,7 +314,7 @@ export function CommentSection({
         contentType, // Pass the original contentType, let addComment normalize it
         newComment.trim(),
         username || 'მომხმარებელი',
-        avatarUrl,
+        getSupabaseAvatarUrl(userId, profile?.avatar_url),
         mediaUrl
       )
       
@@ -528,21 +550,41 @@ export function CommentSection({
     <div 
       className="w-full mt-8 md:mt-12 relative"
     >
-      {/* Overlay for readability if background is set - REMOVED */}
+      {/* Chapter Info Header - Show which chapter comments belong to */}
+      {chapterInfo && (
+        <div className="mb-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-purple-400" />
+              <span className="text-sm text-purple-300">
+                კომენტარები თავისთვის {chapterInfo.number}: {chapterInfo.title}
+              </span>
+            </div>
+            <div className="bg-purple-600/30 text-purple-200 px-2 py-1 rounded-full text-xs">
+              {comments.length} კომენტარი
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* All existing content should be wrapped to be above the overlay */}
       <div className="relative z-10">
+        {/* Authentication status debug info (remove after testing) */}
+        <div className="mb-2 p-2 bg-yellow-900/20 border border-yellow-500/30 hidden rounded text-xs">
+          <strong>Debug:</strong> Auth: {isAuthenticated ? 'YES' : 'NO'} | Loading: {authLoading ? 'YES' : 'NO'} | UserId: {userId || 'NULL'} | Username: {username || 'NULL'}
+        </div>
+        
         {/* New comment box / Edit comment box */} 
-        {isAuthenticated ? (
+        {(isAuthenticated || authLoading) ? (
           <motion.div 
             className="mb-6 p-4 rounded-lg bg-transparent border border-white/10 shadow-md" // Transparent BG, border
             variants={itemVariants}
           >
             <div className="flex items-start space-x-3">
               <Avatar className="h-10 w-10 flex-shrink-0"> {/* Slightly larger avatar */} 
-                {avatarUrl ? (
+                {profile?.avatar_url ? (
                   <AvatarImage 
-                    src={avatarUrl} 
+                    src={getSupabaseAvatarUrl(userId, profile.avatar_url ?? undefined) ?? undefined} 
                     alt={username || 'მომხმარებელი'} 
                     referrerPolicy="no-referrer"
                   />
@@ -557,9 +599,16 @@ export function CommentSection({
                   ref={commentBoxRef}
                   value={editingId ? editText : newComment}
                   onChange={(e) => editingId ? setEditText(e.target.value) : setNewComment(e.target.value)}
-                  placeholder={editingId ? "კომენტარის რედაქტირება..." : "დაწერეთ კომენტარი..."}
+                  placeholder={
+                    authLoading 
+                      ? "იტვირთება..." 
+                      : editingId 
+                        ? "კომენტარის რედაქტირება..." 
+                        : "დაწერეთ კომენტარი..."
+                  }
                   className="resize-none mb-3 bg-transparent border-white/20 placeholder:text-white/50 focus:border-purple-500/60 transition-colors duration-150 p-3 rounded-md text-white" // Transparent BG, improved focus
                   rows={editingId || newComment.length > 70 ? 3 : 1} // Dynamic rows
+                  disabled={authLoading}
                 />
               
                 {/* Sticker/Media Preview Area */} 
@@ -610,10 +659,17 @@ export function CommentSection({
                           />
                       )}
                     </Button>
-                    {/* Add more media buttons here if needed */}
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
+                                    {/* Add more media buttons here if needed */}
+              </div>
+              
+              {/* Authentication notice */}
+              {!isAuthenticated && !authLoading && (
+                <div className="mb-3 p-2 bg-blue-900/20 border border-blue-500/30 rounded text-xs text-blue-300">
+                  კომენტარის დასატოვებლად გაიარეთ ავტორიზაცია
+                </div>
+              )}
+              
+              <div className="flex items-center gap-2">
                       {editingId && (
                           <Button 
                               variant="ghost" 
@@ -625,15 +681,32 @@ export function CommentSection({
                           </Button>
                       )}
                       <Button 
-                        onClick={handlePostOrUpdateComment} 
-                        disabled={((editingId ? !editText.trim() && !editMedia : !newComment.trim() && !selectedSticker)) || isSubmitting}
+                        onClick={() => {
+                          if (authLoading) return;
+                          if (!isAuthenticated && !authLoading) {
+                            router.push('/login');
+                            return;
+                          }
+                          handlePostOrUpdateComment();
+                        }} 
+                        disabled={authLoading || isSubmitting || (editingId ? !editText.trim() && !editMedia : !newComment.trim() && !selectedSticker)}
                         className="bg-purple-600 text-white hover:bg-purple-500 transition-colors duration-150 px-4 py-2 h-auto text-sm rounded-md"
                       >
-                          {isSubmitting ? 
-                            <Loader2 className="h-4 w-4 animate-spin" /> : 
-                            editingId ? 'შენახვა' : 'გამოქვეყნება'
-                          }
-                          {!isSubmitting && <Send className="ml-2 h-4 w-4" />}
+                          {authLoading ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              იტვირთება...
+                            </>
+                          ) : isSubmitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : !isAuthenticated ? (
+                            'ავტორიზაცია'
+                          ) : (
+                            <>
+                              {editingId ? 'შენახვა' : 'გამოქვეყნება'}
+                              <Send className="ml-2 h-4 w-4" />
+                            </>
+                          )}
                       </Button>
                   </div>
                 </div>
@@ -828,13 +901,13 @@ const CommentItem = ({
       variants={itemVariants} 
       className={cn(
         "p-4 rounded-lg shadow-sm border-2 border-white/10 relative", 
-        comment.user_profile?.vip_status ? "border-2 border-yellow-500 dark:border-yellow-400" : "bg-transparent"
+        comment.user_profile?.vip_status ? "border-2 border-black-500/50 dark:border-black-500/50" : "bg-transparent"
       )}
       style={commentBackgroundStyle}
     >
       <div className={cn(
         "absolute inset-0 rounded-lg",
-        comment.user_profile?.vip_status && comment.user_profile?.comment_background_url ? "bg-black/30 dark:bg-black/50" : ""
+        comment.user_profile?.vip_status && comment.user_profile?.comment_background_url ? "bg-black/70 backdrop-blur-sm" : ""
       )}></div>
       
       <div className="relative z-10">
@@ -843,7 +916,7 @@ const CommentItem = ({
             <Avatar className="w-10 h-10 border-2 border-gray-200 dark:border-gray-700">
               {comment.user_profile?.avatar_url ? (
                 <AvatarImage 
-                  src={comment.user_profile.avatar_url} 
+                  src={getSupabaseAvatarUrl(comment.user_id, comment.user_profile.avatar_url ?? undefined) ?? undefined} 
                   alt={comment.user_profile?.username || "მომხმარებელი"} 
                   referrerPolicy="no-referrer"
                 />
@@ -859,25 +932,41 @@ const CommentItem = ({
           </Link>
           <div className="flex-1">
             <div className="flex items-center space-x-2">
-              <Link href={`/profile/${comment.user_id}`} className="font-semibold text-sm text-white hover:underline">
+              <Link href={`/profile/${comment.user_id}`} className={cn(
+                "font-semibold text-sm text-white hover:underline",
+                comment.user_profile?.vip_status && comment.user_profile?.comment_background_url ? "drop-shadow-lg" : ""
+              )}>
                 {comment.user_profile?.username || " მომხმარებელი"}
               </Link>
               {comment.user_profile?.vip_status && (
                 <VIPBadge />
               )}
-              <span className="text-xs text-gray-500 dark:text-gray-400">{formattedDate}</span>
+              <span className={cn(
+                "text-xs text-gray-300",
+                comment.user_profile?.vip_status && comment.user_profile?.comment_background_url ? "drop-shadow-lg" : "text-gray-500"
+              )}>{formattedDate}</span>
             </div>
             
             {/* Restored Comment Text */} 
             {comment.text && (
-              <div className="mt-2 text-sm text-white-200 dark:text-gray-300 whitespace-pre-wrap break-words">
+              <div className={cn(
+                "mt-2 text-sm whitespace-pre-wrap break-words",
+                comment.user_profile?.vip_status && comment.user_profile?.comment_background_url 
+                  ? "text-white drop-shadow-lg" 
+                  : "text-white-200 dark:text-gray-300"
+              )}>
                 {showFullText || comment.text.length <= MAX_LENGTH 
                   ? comment.text 
                   : `${comment.text.substring(0, MAX_LENGTH)}...`}
                 {comment.text.length > MAX_LENGTH && (
                   <button 
                     onClick={toggleShowFullText} 
-                    className="text-xs text-blue-500 hover:underline ml-1"
+                    className={cn(
+                      "text-xs hover:underline ml-1",
+                      comment.user_profile?.vip_status && comment.user_profile?.comment_background_url
+                        ? "text-blue-300 drop-shadow-lg"
+                        : "text-blue-500"
+                    )}
                   >
                     {showFullText ? 'ნაკლების ჩვენება' : 'მეტის ჩვენება'}
                   </button>
@@ -906,22 +995,41 @@ const CommentItem = ({
                 onClick={() => handleLikeCommentOrReply(comment)}
                 className={cn(
                   "px-2 py-1 h-auto text-xs flex items-center gap-1 rounded-full transition-colors duration-150",
-                  comment.user_has_liked
-                    ? "text-purple-600 bg-purple-100 dark:text-purple-300 dark:bg-purple-700/30 hover:bg-purple-200 dark:hover:bg-purple-700/50"
-                    : "text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300 hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                  comment.user_profile?.vip_status && comment.user_profile?.comment_background_url
+                    ? comment.user_has_liked
+                      ? "text-purple-300 bg-purple-800/50 hover:bg-purple-800/70 drop-shadow-lg"
+                      : "text-gray-300 hover:text-purple-300 bg-black/20 hover:bg-black/30 drop-shadow-lg"
+                    : comment.user_has_liked
+                      ? "text-purple-600 bg-purple-100 dark:text-purple-300 dark:bg-purple-700/30 hover:bg-purple-200 dark:hover:bg-purple-700/50"
+                      : "text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-300 hover:bg-gray-100 dark:hover:bg-gray-700/50"
                 )}
               >
-                <ThumbsUp className={cn("h-3.5 w-3.5", comment.user_has_liked && "fill-purple-600 dark:fill-purple-300")} />
+                <ThumbsUp className={cn(
+                  "h-3.5 w-3.5", 
+                  comment.user_has_liked && (comment.user_profile?.vip_status && comment.user_profile?.comment_background_url 
+                    ? "fill-purple-300" 
+                    : "fill-purple-600 dark:fill-purple-300")
+                )} />
                 <span>{comment.like_count || 0}</span>
               </Button>
             </div>
             
             {isOwnComment && (
               <div className="flex space-x-2 mt-2">
-                <Button variant="ghost" size="sm" onClick={() => handleEditComment(comment)} className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+                <Button variant="ghost" size="sm" onClick={() => handleEditComment(comment)} className={cn(
+                  "text-xs",
+                  comment.user_profile?.vip_status && comment.user_profile?.comment_background_url
+                    ? "text-blue-300 hover:text-blue-200 drop-shadow-lg bg-black/20 hover:bg-black/30"
+                    : "text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                )}>
                   <Edit size={14} className="mr-1" /> რედაქტირება
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDeleteCommentRequest(comment)} className="text-xs text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                <Button variant="ghost" size="sm" onClick={() => handleDeleteCommentRequest(comment)} className={cn(
+                  "text-xs",
+                  comment.user_profile?.vip_status && comment.user_profile?.comment_background_url
+                    ? "text-red-300 hover:text-red-200 drop-shadow-lg bg-black/20 hover:bg-black/30"
+                    : "text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                )}>
                   <Trash2 size={14} className="mr-1" /> წაშლა
                 </Button>
               </div>

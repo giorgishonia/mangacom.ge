@@ -1,0 +1,1 @@
+{"table": "chapters", "column": "language", "dataType": "TEXT", "constraints": "DEFAULT 'ge' CHECK (language IN ('ge', 'en')) NOT NULL"}

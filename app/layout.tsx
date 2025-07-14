@@ -4,6 +4,7 @@ import { Inter, Space_Grotesk } from 'next/font/google'
 import { SupabaseAuthProvider } from '@/components/supabase-auth-provider'
 import { UnifiedAuthProvider } from '@/components/unified-auth-provider'
 import { MaintenanceRunner } from '@/components/maintenance-runner'
+import { LanguageProvider } from '@/hooks/use-preferred-language'
 import { Toaster } from 'sonner'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -79,9 +80,11 @@ export default function RootLayout({
       <body className={inter.className} suppressHydrationWarning>
         <SupabaseAuthProvider>
           <UnifiedAuthProvider>
-            <MaintenanceRunner />
-            {children}
-            <Toaster richColors position="top-right" theme="dark" />
+            <LanguageProvider>
+              <MaintenanceRunner />
+              {children}
+              <Toaster richColors position="top-right" theme="dark" />
+            </LanguageProvider>
           </UnifiedAuthProvider>
         </SupabaseAuthProvider>
       </body>

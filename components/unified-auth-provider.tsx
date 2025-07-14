@@ -2,6 +2,7 @@
 
 import { createContext, useContext, ReactNode, useEffect, useState } from "react"
 import { useAuth as useSupabaseAuth } from "@/components/supabase-auth-provider"
+import { createClient } from "@/utils/supabase/client";
 
 // Unified auth type (now just using Supabase)
 type UnifiedAuthContextType = {
@@ -11,6 +12,7 @@ type UnifiedAuthContextType = {
   username: string | null
   avatarUrl: string | null
   email: string | null
+  profile: any; // Add profile
 }
 
 const UnifiedAuthContext = createContext<UnifiedAuthContextType | undefined>(undefined)
@@ -26,7 +28,8 @@ export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
     userId: null,
     username: null,
     avatarUrl: null,
-    email: null
+    email: null,
+    profile: null,
   })
   
   // Update the unified auth state whenever Supabase auth changes
@@ -53,17 +56,39 @@ export function UnifiedAuthProvider({ children }: { children: ReactNode }) {
       userId,
       username: username === 'User' && !userId ? null : username,
       avatarUrl,
-      email
+      email,
+      profile: null, // Clear profile when auth state changes
     })
     
-    // Log the auth state for debugging
-    console.log("Auth state updated:", {
-      supabaseUser: !!supabaseUser,
-      isAuthenticated,
-      userId
-    })
+    // Debug log removed to keep console clean
     
   }, [supabaseUser, supabaseLoading])
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (unifiedAuth.userId) {
+        const supabase = createClient();
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', unifiedAuth.userId)
+          .single();
+
+        if (error) {
+          console.error('Error fetching profile:', error);
+          return;
+        }
+
+        setUnifiedAuth(prev => ({
+          ...prev,
+          avatarUrl: profileData?.avatar_url || null,
+          profile: profileData,
+        }));
+      }
+    };
+
+    fetchProfile();
+  }, [unifiedAuth.userId]);
   
   return (
     <UnifiedAuthContext.Provider value={unifiedAuth}>

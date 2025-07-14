@@ -137,28 +137,6 @@ export default function FavoriteCharactersSection({ isOwner, username }: { isOwn
         )}
       </div>
 
-      {/* Controls (only visible when owner) */}
-      {isOwner && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
-          <input
-            type="text"
-            placeholder="ძიება..."
-            value={search}
-            onChange={e=>setSearch(e.target.value)}
-            className="px-3 py-1 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none"
-          />
-          <select
-            value={sortMode}
-            onChange={e=>setSortMode(e.target.value as any)}
-            className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none"
-          >
-            <option value="recent">უახლესი</option>
-            <option value="alpha">ანბანი</option>
-            <option value="source">სერია</option>
-          </select>
-        </div>
-      )}
-
       {/* Grid with visible characters and placeholders */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-3 gap-4">
         {visibleChars.map((c) => (
@@ -199,65 +177,6 @@ export default function FavoriteCharactersSection({ isOwner, username }: { isOwn
           />
         ))}
       </div>
-
-      {/* Dialog with full list */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>ყველა ფავორიტი პერსონაჟი</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-96 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-2">
-            {/* Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
-              <input
-                type="text"
-                placeholder="ძიება..."
-                value={search}
-                onChange={e=>setSearch(e.target.value)}
-                className="px-3 py-1 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none"
-              />
-              <select
-                value={sortMode}
-                onChange={e=>setSortMode(e.target.value as any)}
-                className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none"
-              >
-                <option value="recent">უახლესი</option>
-                <option value="alpha">ანბანი</option>
-                <option value="source">სერია</option>
-              </select>
-            </div>
-            {sortedChars.map((c) => (
-              <div key={`dlg-${c.id}`} className="relative flex flex-col items-center text-center h-full">
-                {isOwner && (
-                  <button
-                    onClick={() => handleRemove(c.id)}
-                    title="წაშლა"
-                    className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-600 rounded-full"
-                  >
-                    <Trash2 className="h-4 w-4 text-white" />
-                  </button>
-                )}
-                {/* Image wrapper enforcing square aspect ratio */}
-                <div className="w-full aspect-square rounded-md overflow-hidden mb-2 flex-shrink-0">
-                  <ImageSkeleton
-                    src={c.image || "/placeholder-character.jpg"}
-                    alt={c.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <span className="text-xs text-gray-200 break-words mt-4 leading-snug w-full">
-                  {c.name}
-                </span>
-                {c.from && (
-                  <span className="text-[10px] text-gray-400 break-words leading-snug w-full">
-                    {c.from}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 } 

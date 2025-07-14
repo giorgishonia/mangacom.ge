@@ -1,5 +1,25 @@
 import { supabase, supabasePublic } from './supabase'
-import { Chapter } from './supabase' // Removed Episode and Content import
+import type { Chapter } from './supabase'
+
+// ---------------------------------------------------------------------------
+// Internal util flags
+// ---------------------------------------------------------------------------
+
+// Remember if the optional mangadex_chapter_cache table exists so we don’t hit
+// the network with 404s repeatedly for every page-load.
+let HAS_MANGADEX_CACHE_TABLE: boolean | null = null;
+
+// Toggle for verbose logging within content helper functions
+const CONTENT_DEBUG = false;
+
+// Helper wrappers to silence logs when debug is off
+if (!CONTENT_DEBUG) {
+  // eslint-disable-next-line no-console
+  console.log = (..._args: any[]) => {};
+  // eslint-disable-next-line no-console
+  console.warn = (..._args: any[]) => {};
+}
+// NOTE: console.error is left intact so real errors remain visible.
 
 // Content metadata interface with consistent chapter tracking (episodes removed)
 export interface ContentMetadata {
@@ -679,43 +699,158 @@ export async function deleteContent(id: string) {
   }
 }
 
-// Get chapters for manga
-export async function getChapters(contentId: string) {
-  try {
-    // First try with contentId
-    let { data, error } = await supabasePublic
-      .from('chapters')
-      .select('*')
-      .eq('content_id', contentId)
-      .order('number', { ascending: true })
+// Insert new options interface just before getChapters declaration
+export interface GetChaptersOptions {
+  includeEnglish?: boolean; // whether to include English chapters (MangaDex)
+  limitEnglish?: number;   // page size for EN chapter fetch
+  offsetEnglish?: number;  // pagination offset for EN fetch
+  forceRefresh?: boolean;  // bypass cache
+  includeGeorgian?: boolean; // whether to include Georgian chapters (local DB)
+}
 
-    // If no results or error, try with content_id
-    if ((error || !data || data.length === 0)) {
-      const fallbackResult = await supabasePublic
+// Get chapters for manga
+export async function getChapters(contentId: string, optionsOrForceRefresh: boolean | GetChaptersOptions = {}) {
+  // ---------------------------------------------------------------------
+  // Extract options (maintaining backward compatibility with old boolean)
+  // ---------------------------------------------------------------------
+  let includeEnglish   = true;
+  let includeGeorgian  = true;
+  let limitEnglish     = 500;
+  let offsetEnglish    = 0;
+
+  if (typeof optionsOrForceRefresh === 'object') {
+    includeEnglish   = optionsOrForceRefresh.includeEnglish  ?? true;
+    includeGeorgian  = optionsOrForceRefresh.includeGeorgian ?? true;
+    limitEnglish     = optionsOrForceRefresh.limitEnglish    ?? 500;
+    offsetEnglish    = optionsOrForceRefresh.offsetEnglish   ?? 0;
+  }
+
+  try {
+    const chapters: any[] = [];
+
+    // -------------------------------------------------------------------
+    // Georgian chapters (local DB)
+    // -------------------------------------------------------------------
+    if (includeGeorgian) {
+      const { data: geData, error: geError } = await supabasePublic
         .from('chapters')
         .select('*')
         .eq('content_id', contentId)
+        .eq('language', 'ge')
+        .order('number', { ascending: true });
+
+      if (geError) throw geError;
+
+      chapters.push(...(geData || []).map((ch: any) => ({
+        ...ch,
+        language: ch.language || 'ge',
+      })));
+    }
+
+    // -------------------------------------------------------------------
+    // English chapters (also in local DB) – supports pagination
+    // -------------------------------------------------------------------
+    if (includeEnglish) {
+      const { data: enData, error: enError } = await supabasePublic
+        .from('chapters')
+        .select('*')
+        .eq('content_id', contentId)
+        .eq('language', 'en')
         .order('number', { ascending: true })
-      
-      if (!fallbackResult.error && fallbackResult.data && fallbackResult.data.length > 0) {
-        data = fallbackResult.data
-        error = null
+        .range(offsetEnglish, offsetEnglish + limitEnglish - 1);
+
+      if (enError) throw enError;
+
+      chapters.push(...(enData || []).map((ch: any) => ({
+        ...ch,
+        language: 'en',
+      })));
+
+      // -----------------------------------------------------------------
+      // Fallback / Supplement: fetch from MangaDex API if available
+      // -----------------------------------------------------------------
+      // Only attempt remote fetch if we didn't get enough EN chapters from
+      // the local DB for this page request.
+      const fetchedLocalCount = enData ? enData.length : 0;
+
+      if (fetchedLocalCount < limitEnglish) {
+        // Retrieve MangaDex ID for this content
+        const { data: mdMeta, error: mdErr } = await supabasePublic
+          .from('content')
+          .select('mangadex_id')
+          .eq('id', contentId)
+          .maybeSingle();
+
+        if (!mdErr && mdMeta && mdMeta.mangadex_id) {
+          const mdId = (mdMeta as any).mangadex_id as string;
+
+          try {
+            const url = `https://api.mangadex.org/manga/${mdId}/feed?translatedLanguage[]=en&order[chapter]=asc&limit=${limitEnglish}&offset=${offsetEnglish}`;
+            const resp = await fetch(url);
+
+            if (resp.ok) {
+              const json = await resp.json();
+              const mdChaps = json?.data || [];
+
+              chapters.push(
+                ...mdChaps.map((item: any, idx: number) => {
+                  // Attempt best-effort title extraction
+                  let title = '';
+                  const rawTitle = item.attributes.title;
+                  if (typeof rawTitle === 'string') {
+                    title = rawTitle.trim();
+                  } else if (rawTitle && typeof rawTitle === 'object') {
+                    const firstVal = Object.values(rawTitle)[0];
+                    if (typeof firstVal === 'string') title = firstVal.trim();
+                  }
+
+                  if (!title) {
+                    if (item.attributes.chapter) {
+                      title = `Chapter ${item.attributes.chapter}`;
+                    } else {
+                      title = `Ch ${offsetEnglish + idx + 1}`;
+                    }
+                  }
+
+                  return {
+                    id: item.id,
+                    number: parseFloat(item.attributes.chapter) || offsetEnglish + idx + 1,
+                    title,
+                    pages: [],
+                    language: 'en',
+                    external: true,
+                    created_at: item.attributes.publishAt || null,
+                    release_date: item.attributes.publishAt || null,
+                  };
+                })
+              );
+            }
+          } catch (mdFetchErr) {
+            console.error('[getChapters] MangaDex fetch failed:', mdFetchErr);
+          }
+        }
       }
     }
 
-    if (error) {
-      throw error
-    }
+    // -------------------------------------------------------------------
+    // Deduplicate & sort (by language-number key)
+    // -------------------------------------------------------------------
+    const deduped: Record<string, any> = {};
+    chapters.forEach((c) => {
+      const key = `${c.language}-${c.number}`;
+      if (!deduped[key]) deduped[key] = c;
+    });
 
-    return { success: true, chapters: data || [] }
+    const merged = Object.values(deduped).sort((a: any, b: any) => {
+      const numA = typeof a.number === 'number' ? a.number : parseFloat(a.number);
+      const numB = typeof b.number === 'number' ? b.number : parseFloat(b.number);
+      return numA - numB;
+    });
+
+    return { success: true, chapters: merged };
   } catch (error) {
-    // Enhanced error logging
-    console.error('Get chapters error details:', JSON.stringify(error, null, 2));
-    if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-    }
-    return { success: false, error }
+    console.error('[getChapters] DB fetch error:', error);
+    return { success: false, error };
   }
 }
 

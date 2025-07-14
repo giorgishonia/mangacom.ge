@@ -24,6 +24,8 @@ import {
   getProfileForUser,
   UserProfile 
 } from '@/lib/users';
+import { CustomCalendar } from "@/components/ui/custom-calendar"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 // --- Zod Schema with Async Refinement --- 
 
@@ -43,6 +45,7 @@ const onboardingSchema = z.object({
   interests: z.array(z.string()).optional().default([]), // e.g., ["anime", "manga"]
   location: z.string().max(100, "მდებარეობა ძალიან გრძელია").optional().nullable(),
   birth_date: z.date().optional().nullable(),
+  preferred_language: z.enum(['ge', 'en']).default('ge'),
 });
 
 type OnboardingFormData = z.infer<typeof onboardingSchema>;
@@ -52,8 +55,9 @@ const steps = [
   { id: 1, name: 'მისალმება', fields: [] }, // Welcome step with no required fields
   { id: 2, name: 'ძირითადი ინფორმაცია', fields: ['first_name', 'last_name', 'username'] },
   { id: 3, name: 'ინტერესები', fields: ['interests'] },
-  { id: 4, name: 'დამატებითი დეტალები', fields: ['location', 'birth_date'] },
-  { id: 5, name: 'მიმოხილვა', fields: [] }, // No fields needed for review step
+  { id: 4, name: 'ენის არჩევა', fields: ['preferred_language'] },
+  { id: 5, name: 'დამატებითი დეტალები', fields: ['location', 'birth_date'] },
+  { id: 6, name: 'მიმოხილვა', fields: [] }, // No fields needed for review step
 ];
 
 // Anime/manga welcome images
@@ -177,6 +181,7 @@ export default function OnboardingPage() {
        const dataToSend = {
          ...data,
          birth_date: data.birth_date ? format(data.birth_date, 'yyyy-MM-dd') : null,
+         preferred_language: data.preferred_language,
        };
        // Remove nullish values that Supabase might reject if column isn't nullable
        Object.keys(dataToSend).forEach(key => {
@@ -241,7 +246,26 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-black p-4 bg-[url('/images/onboarding/bg-pattern.png')] bg-repeat bg-opacity-10">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[url('/images/onboarding/starry-bg.png')] bg-cover bg-center bg-fixed p-4">
+      <div className="absolute inset-0 pointer-events-none z-0">
+        {/* Add 15 stars */}
+        <div className="absolute w-1 h-1 bg-white rounded-full animate-twinkle" style={{ top: '10%', left: '20%', animationDuration: '2s' }} />
+        <div className="absolute w-0.5 h-0.5 bg-white rounded-full animate-twinkle" style={{ top: '15%', left: '40%', animationDuration: '1.5s', animationDelay: '0.5s' }} />
+        <div className="absolute w-1.5 h-1.5 bg-white rounded-full animate-twinkle" style={{ top: '25%', left: '60%', animationDuration: '3s' }} />
+        <div className="absolute w-2 h-2 bg-white rounded-full animate-twinkle" style={{ top: '30%', left: '10%', animationDuration: '2.5s', animationDelay: '1s' }} />
+        <div className="absolute w-1 h-1 bg-white rounded-full animate-twinkle" style={{ top: '40%', left: '70%', animationDuration: '1s' }} />
+        <div className="absolute w-0.5 h-0.5 bg-white rounded-full animate-twinkle" style={{ top: '50%', left: '30%', animationDuration: '2s', animationDelay: '0.3s' }} />
+        <div className="absolute w-1.5 h-1.5 bg-white rounded-full animate-twinkle" style={{ top: '60%', left: '50%', animationDuration: '1.8s' }} />
+        <div className="absolute w-1 h-1 bg-white rounded-full animate-twinkle" style={{ top: '70%', left: '80%', animationDuration: '2.2s', animationDelay: '0.7s' }} />
+        <div className="absolute w-2 h-2 bg-white rounded-full animate-twinkle" style={{ top: '80%', left: '15%', animationDuration: '3s' }} />
+        <div className="absolute w-0.5 h-0.5 bg-white rounded-full animate-twinkle" style={{ top: '85%', left: '65%', animationDuration: '1.2s', animationDelay: '0.2s' }} />
+        <div className="absolute w-1 h-1 bg-white rounded-full animate-twinkle" style={{ top: '20%', left: '85%', animationDuration: '2.5s' }} />
+        <div className="absolute w-1.5 h-1.5 bg-white rounded-full animate-twinkle" style={{ top: '35%', left: '25%', animationDuration: '1.7s', animationDelay: '1.5s' }} />
+        <div className="absolute w-2 h-2 bg-white rounded-full animate-twinkle" style={{ top: '45%', left: '55%', animationDuration: '2.8s' }} />
+        <div className="absolute w-1 h-1 bg-white rounded-full animate-twinkle" style={{ top: '55%', left: '75%', animationDuration: '1.4s', animationDelay: '0.8s' }} />
+        <div className="absolute w-0.5 h-0.5 bg-white rounded-full animate-twinkle" style={{ top: '65%', left: '35%', animationDuration: '2.1s' }} />
+      </div>
+      <style jsx global>{`@keyframes twinkle { 0% {opacity: 0.5} 50% {opacity: 1} 100% {opacity: 0.5} } .animate-twinkle { animation: twinkle infinite alternate; }`}</style>
       <motion.div 
         className="w-full max-w-xl p-8 space-y-6 bg-black/60 rounded-xl backdrop-blur-lg border border-purple-500/20 shadow-2xl"
         initial={{ opacity: 0, scale: 0.95 }}
@@ -425,8 +449,72 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {/* Step 4: Optional Details */} 
+              {/* Step 4: Language Selection */} 
               {currentStep === 4 && (
+                <div className="space-y-4">
+                  <Label className="text-base font-medium text-gray-200">რა ენაზე გსურთ კონტენტის ნახვა?</Label>
+                  <p className="text-sm text-gray-400">შეგიძლიათ შეცვალოთ მოგვიანებით პარამეტრებში.</p>
+                  
+                  <div className="relative h-32 mb-6 overflow-hidden rounded-lg flex justify-center items-center bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/20">
+                    <div className="text-center">
+                      <span className="text-4xl">🌍</span>
+                      <p className="text-gray-300 mt-2 text-sm">აირჩიეთ ენა</p>
+                    </div>
+                  </div>
+                  
+                  <Controller
+                    name="preferred_language"
+                    control={control}
+                    render={({ field }) => (
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="flex flex-col space-y-3"
+                      >
+                        <Label
+                          htmlFor="ge"
+                          className={cn(
+                            "flex items-center space-x-4 rounded-xl border-2 p-5 cursor-pointer transition-all hover:shadow-lg",
+                            field.value === 'ge' 
+                              ? 'border-purple-500 bg-purple-900/30 shadow-purple-500/20 shadow-lg' 
+                              : 'border-purple-500/20 bg-black/60 hover:bg-black/80 hover:border-purple-500/40'
+                          )}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <RadioGroupItem value="ge" id="ge" className="w-5 h-5" />
+                            <div className="text-2xl">🇬🇪</div>
+                            <div>
+                              <span className="text-lg font-medium text-white">ქართული</span>
+                              <p className="text-sm text-gray-400">Georgian</p>
+                            </div>
+                          </div>
+                        </Label>
+                        <Label
+                          htmlFor="en"
+                          className={cn(
+                            "flex items-center space-x-4 rounded-xl border-2 p-5 cursor-pointer transition-all hover:shadow-lg",
+                            field.value === 'en' 
+                              ? 'border-purple-500 bg-purple-900/30 shadow-purple-500/20 shadow-lg' 
+                              : 'border-purple-500/20 bg-black/60 hover:bg-black/80 hover:border-purple-500/40'
+                          )}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <RadioGroupItem value="en" id="en" className="w-5 h-5" />
+                            <div className="text-2xl">🇺🇸</div>
+                            <div>
+                              <span className="text-lg font-medium text-white">English</span>
+                              <p className="text-sm text-gray-400">ინგლისური</p>
+                            </div>
+                          </div>
+                        </Label>
+                      </RadioGroup>
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Step 5: Optional Details */} 
+              {currentStep === 5 && (
                  <div className="space-y-4">
                    <p className="text-sm text-gray-400">ეს დეტალები არასავალდებულოა და შეგიძლიათ მოგვიანებით დაამატოთ.</p>
                    
@@ -460,29 +548,38 @@ export default function OnboardingPage() {
                                    <Button
                                      variant={"outline"}
                                      className={cn(
-                                       "w-full justify-start text-left font-normal bg-black/70 border-purple-500/20",
+                                       "w-[240px] pl-3 text-left font-normal",
                                        !field.value && "text-muted-foreground"
                                      )}
                                    >
-                                     <CalendarIcon className="mr-2 h-4 w-4" />
-                                     {field.value ? format(field.value, "PPP") : <span>აირჩიეთ თარიღი</span>}
+                                     {field.value ? (
+                                       <span>{format(field.value, "PPP")}</span>
+                                     ) : (
+                                       <span>აირჩიე თარიღი</span>
+                                     )}
+                                     <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                    </Button>
                                  </PopoverTrigger>
-                                 <PopoverContent className="w-auto p-0">
-                                   <Calendar
-                                     mode="single"
-                                     selected={field.value ?? undefined}
-                                     onSelect={(date) => {
-                                       field.onChange(date)
-                                       setOpen(false)
-                                     }}
-                                     disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
-                                     initialFocus
-                                     captionLayout="dropdown"
-                                     fromYear={1950}
-                                     toYear={new Date().getFullYear() - 5}
-                                   />
-                                 </PopoverContent>
+                                 <AnimatePresence>
+                                   <PopoverContent className="w-auto p-0 bg-black border-purple-500/20" align="start">
+                                     <motion.div
+                                       initial={{ opacity: 0, scale: 0.95 }}
+                                       animate={{ opacity: 1, scale: 1 }}
+                                       exit={{ opacity: 0, scale: 0.95 }}
+                                       transition={{ duration: 0.2, ease: "easeInOut" }}
+                                     >
+                                       <CustomCalendar
+                                         mode="single"
+                                         selected={field.value ? field.value : undefined}
+                                         onSelect={field.onChange}
+                                         disabled={(date) =>
+                                           date > new Date() || date < new Date("1900-01-01")
+                                         }
+                                         initialFocus
+                                       />
+                                     </motion.div>
+                                   </PopoverContent>
+                                 </AnimatePresence>
                                </Popover>
                              )
                            }}
@@ -492,8 +589,8 @@ export default function OnboardingPage() {
                  </div>
               )}
 
-              {/* Step 5: Review */} 
-              {currentStep === 5 && (
+              {/* Step 6: Review */} 
+              {currentStep === 6 && (
                  <div className="space-y-4">
                     <h3 className="font-medium text-lg text-gray-200">ინფორმაციის მიმოხილვა</h3>
                     
@@ -512,6 +609,7 @@ export default function OnboardingPage() {
                       <p><strong className="text-purple-400">სახელი:</strong> <span className="text-white">{getValues("first_name") || '-'}</span></p>
                       <p><strong className="text-purple-400">გვარი:</strong> <span className="text-white">{getValues("last_name") || '-'}</span></p>
                       <p><strong className="text-purple-400">ინტერესები:</strong> <span className="text-white">{getValues("interests")?.map(i => i === 'comics' ? 'კომიქსი' : i === 'manga' ? 'მანგა' : i).join(', ') || 'არჩეული არ არის'}</span></p>
+                      <p><strong className="text-purple-400">ენა:</strong> <span className="text-white">{getValues("preferred_language") === 'ge' ? 'ქართული (GE)' : 'English (EN)'}</span></p>
                       <p><strong className="text-purple-400">მდებარეობა:</strong> <span className="text-white">{getValues("location") || '-'}</span></p>
                       <p><strong className="text-purple-400">დაბადების თარიღი:</strong> <span className="text-white">{getValues("birth_date") ? format(getValues("birth_date")!, 'PPP') : '-'}</span></p>
                     </div>
@@ -578,4 +676,32 @@ export default function OnboardingPage() {
       </div>
     </div>
   );
+} 
+
+function calculateAge(birthDate: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+function getZodiacSign(date: Date): string {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  if ((month == 1 && day >= 20) || (month == 2 && day <= 18)) return "Aquarius";
+  if ((month == 2 && day >= 19) || (month == 3 && day <= 20)) return "Pisces";
+  if ((month == 3 && day >= 21) || (month == 4 && day <= 19)) return "Aries";
+  if ((month == 4 && day >= 20) || (month == 5 && day <= 20)) return "Taurus";
+  if ((month == 5 && day >= 21) || (month == 6 && day <= 20)) return "Gemini";
+  if ((month == 6 && day >= 21) || (month == 7 && day <= 22)) return "Cancer";
+  if ((month == 7 && day >= 23) || (month == 8 && day <= 22)) return "Leo";
+  if ((month == 8 && day >= 23) || (month == 9 && day <= 22)) return "Virgo";
+  if ((month == 9 && day >= 23) || (month == 10 && day <= 22)) return "Libra";
+  if ((month == 10 && day >= 23) || (month == 11 && day <= 21)) return "Scorpio";
+  if ((month == 11 && day >= 22) || (month == 12 && day <= 21)) return "Sagittarius";
+  if ((month == 12 && day >= 22) || (month == 1 && day <= 19)) return "Capricorn";
+  return "Unknown";
 } 

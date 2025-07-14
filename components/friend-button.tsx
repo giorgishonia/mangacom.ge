@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { Loader2, UserPlus, Users, CheckCircle2 } from "lucide-react"
@@ -15,6 +15,9 @@ type Status = "none" | "sent" | "incoming" | "friends" | "loading"
 
 export function FriendButton({ targetUserId, currentUserId }: FriendButtonProps) {
   const [status, setStatus] = useState<Status>("loading")
+  const isSendingRef = useRef(false)
+  const isRespondingRef = useRef(false)
+  const isRemovingRef = useRef(false)
 
   // Fetch relationship status
   useEffect(() => {
@@ -61,22 +64,31 @@ export function FriendButton({ targetUserId, currentUserId }: FriendButtonProps)
       toast.error("საჭიროებაა ავტორიზაცია")
       return
     }
-    const supabase = createBrowserClient()
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    setStatus("loading")
-    const res = await fetch("/api/friends/request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ targetId: targetUserId }),
-    })
-    if (res.ok) {
-      toast.success("მოთხოვნა გაიგზავნა")
-      setStatus("sent")
-    } else {
-      const { error } = await res.json()
-      toast.error(error || "შეცდომა")
+    if (isSendingRef.current) return
+    isSendingRef.current = true
+    try {
+      const supabase = createBrowserClient()
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      setStatus("loading")
+      const res = await fetch("/api/friends/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ targetId: targetUserId }),
+      })
+      if (res.ok) {
+        toast.success("მოთხოვნა გაიგზავნა")
+        setStatus("sent")
+      } else {
+        const { error } = await res.json()
+        toast.error(error || "შეცდომა")
+        setStatus("none")
+      }
+    } catch (err) {
+      toast.error("შეცდომა")
       setStatus("none")
+    } finally {
+      isSendingRef.current = false
     }
   }
 
@@ -85,44 +97,44 @@ export function FriendButton({ targetUserId, currentUserId }: FriendButtonProps)
       toast.error("საჭიროებაა ავტორიზაცია")
       return
     }
-    const supabase = createBrowserClient()
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    setStatus("loading")
-    const res = await fetch("/api/friends/respond", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ requesterId: targetUserId, action }),
-    })
-    if (res.ok) {
-      if (action === "accept") {
-        toast.success("დამეგობრდით")
-        setStatus("friends")
+    if (isRespondingRef.current) return
+    isRespondingRef.current = true
+    try {
+      const supabase = createBrowserClient()
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      setStatus("loading")
+      const res = await fetch("/api/friends/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ requesterId: targetUserId, action }),
+      })
+      if (res.ok) {
+        if (action === "accept") {
+          toast.success("დამეგობრდით")
+          setStatus("friends")
+        } else {
+          toast.success("უარი თქვით")
+          setStatus("none")
+        }
       } else {
-        toast.success("უარი თქვით")
+        const { error } = await res.json()
+        toast.error(error || "შეცდომა")
         setStatus("none")
       }
-    } else {
-      const { error } = await res.json()
-      toast.error(error || "შეცდომა")
+    } catch (err) {
+      toast.error("შეცდომა")
       setStatus("none")
+    } finally {
+      isRespondingRef.current = false
     }
   }
 
-  // Render logic
-  if (!currentUserId || currentUserId === targetUserId) return null
-
-  if (status === "loading") {
-    return (
-      <Button disabled>
-        <Loader2 className="h-4 w-4 animate-spin" />
-      </Button>
-    )
-  }
-
-  if (status === "friends") {
-    const unfriend = async () => {
-      if (!currentUserId) return
+  const unfriend = async () => {
+    if (!currentUserId) return
+    if (isRemovingRef.current) return
+    isRemovingRef.current = true
+    try {
       const supabase = createBrowserClient()
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token
@@ -140,8 +152,26 @@ export function FriendButton({ targetUserId, currentUserId }: FriendButtonProps)
         toast.error(error || "შეცდომა")
         setStatus("friends")
       }
+    } catch (err) {
+      toast.error("შეცდომა")
+      setStatus("friends")
+    } finally {
+      isRemovingRef.current = false
     }
+  }
 
+  // Render logic
+  if (!currentUserId || currentUserId === targetUserId) return null
+
+  if (status === "loading") {
+    return (
+      <Button disabled>
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </Button>
+    )
+  }
+
+  if (status === "friends") {
     return (
       <Button variant="secondary" className="gap-2" onClick={unfriend}>
         <Users className="h-4 w-4" /> მეგობრები (წაშლა)

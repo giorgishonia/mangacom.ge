@@ -28,6 +28,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Form schema for chapter validation
 const chapterSchema = z.object({
@@ -47,6 +48,7 @@ const chapterSchema = z.object({
   ).optional(), // Make the entire processed field optional
   pages: z.array(z.string().url("Invalid page URL")).min(1, "At least one page is required"),
   releaseDate: z.date().optional(),
+  language: z.enum(['ge', 'en']).default('ge'),
 });
 
 type ChapterFormValues = z.infer<typeof chapterSchema>;
@@ -86,6 +88,7 @@ export default function ChapterForm({
     number: Number(initialData.number),
     // Ensure pages is an array
     pages: Array.isArray(initialData.pages) ? initialData.pages : [],
+    language: initialData?.language ?? 'ge',
   } : {
     number: 1,
     title: "",
@@ -93,6 +96,7 @@ export default function ChapterForm({
     thumbnail: "",
     pages: [],
     releaseDate: undefined,
+    language: 'ge',
   };
 
   const form = useForm<ChapterFormValues>({
@@ -250,6 +254,7 @@ export default function ChapterForm({
         pages: processedPages,
         release_date: data.releaseDate || null,
         thumbnail: thumbnail,
+        language: data.language,
       };
       
       console.log("Submitting chapter data:", chapterData);
@@ -447,6 +452,25 @@ export default function ChapterForm({
                 URL for the chapter thumbnail image
               </FormDescription>
               <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="language"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Language</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ge">Georgian</SelectItem>
+                  <SelectItem value="en">English</SelectItem>
+                </SelectContent>
+              </Select>
             </FormItem>
           )}
         />

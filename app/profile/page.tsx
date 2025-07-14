@@ -73,6 +73,7 @@ import { getRecentlyRead, ReadingProgress } from '@/lib/reading-history'
 import TopListSection from '@/components/profile/top-list-section'
 import FavoriteCharactersSection from '@/components/profile/favorite-characters-section'
 import { StatusSelector } from "@/components/ui/status-selector"
+import { getSupabaseAvatarUrl } from "@/lib/comments";
 
 // Interface for content item
 interface ContentItem {
@@ -588,7 +589,7 @@ export default function ProfilePage() {
         {/* Profile header */}
         <div className="relative">
           {/* Custom VIP banner area */}
-          <div className="h-48 overflow-hidden relative">
+          <div className="h-56 overflow-hidden relative">
             {profile?.vip_status && profileBanner ? (
               <Image 
                 src={profileBanner}
@@ -597,14 +598,15 @@ export default function ProfilePage() {
                 className="object-cover"
               />
             ) : (
-              <div className="h-48 bg-gradient-to-r from-purple-900 to-blue-900">
-                <div className="absolute inset-0 bg-black/30" />
+              <div className="h-56 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+                <div className="absolute inset-0 bg-black/20" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
               </div>
             )}
             
             {/* VIP badge */}
             {profile?.vip_status && (
-              <div className="absolute top-4 right-4">
+              <div className="absolute top-6 right-6">
                 <VIPBadge size="md" />
               </div>
             )}
@@ -614,7 +616,7 @@ export default function ProfilePage() {
               <Button 
                 variant="outline" 
                 size="sm"
-                className="absolute bottom-4 right-4 bg-black/50 hover:bg-black/70 text-white"
+                className="absolute bottom-6 right-6 bg-black/60 hover:bg-black/80 text-white border-white/20 backdrop-blur-sm"
                 onClick={() => setShowBannerUpload(true)}
               >
                 <UploadIcon className="h-4 w-4 mr-2" />
@@ -624,19 +626,18 @@ export default function ProfilePage() {
           </div>
 
           {/* Profile info */}
-          <div className="container mx-auto px-4">
-            <div className="relative -mt-16 flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6 pb-6">
+          <div className="container mx-auto px-6">
+            <div className="relative -mt-20 flex flex-col lg:flex-row items-center lg:items-end gap-6 pb-8">
               {/* Avatar */}
               <div className="relative flex-shrink-0">
-                {/* Responsive avatar size */}
                 <div className={cn(
-                  "w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4",
-                  profile?.vip_status ? (profile.vip_theme ? `border-${profile.vip_theme}-500` : "border-yellow-400") : "border-black"
-                  // Ensure Tailwind is configured for dynamic border colors like border-purple-500, border-blue-500 etc. if using vip_theme.
-                  // If vip_theme specific classes are not available, fallback to a generic VIP color e.g. "border-yellow-400"
+                  "w-32 h-32 lg:w-40 lg:h-40 rounded-full overflow-hidden border-4 shadow-2xl",
+                  profile?.vip_status 
+                    ? "border-purple-500 shadow-purple-900/50 ring-4 ring-purple-500/20" 
+                    : "border-gray-700 shadow-black/50"
                 )}>
                   <ImageSkeleton
-                    src={profile.avatar_url || "/placeholder.svg"}
+                    src={getSupabaseAvatarUrl(user.id, profile.avatar_url) || "/placeholder-user.jpg"}
                     alt={profile.username || "მომხმარებელი"}
                     className="w-full h-full object-cover"
                   />
@@ -644,45 +645,45 @@ export default function ProfilePage() {
               </div>
 
               {/* User info */}
-              <div className="flex-1 text-center md:text-left">
-                <div className="flex flex-col md:flex-row md:items-center justify-center md:justify-start gap-2 md:gap-4">
-                   {/* Responsive heading size */}
-                  <h1 className="text-2xl md:text-3xl font-bold">
+              <div className="flex-1 text-center lg:text-left lg:ml-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-center lg:justify-start gap-3 lg:gap-4">
+                  <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                      {profile.first_name || profile.last_name 
                         ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
                         : profile.username || "მომხმარებელი"}
                   </h1>
-                  <div className="text-gray-400">@{profile.username}</div>
+                  <div className="text-gray-400 text-lg">@{profile.username}</div>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
-                  <div className="flex items-center gap-1 text-gray-400 text-sm">
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 mt-4 text-gray-400 text-sm">
+                  <div className="flex items-center gap-1.5">
                     <Calendar className="h-4 w-4" />
                     <span>შემოგვიერთდა {profile.created_at ? new Date(profile.created_at).toLocaleDateString('ka-GE', { month: 'long', year: 'numeric' }) : "ცოტა ხნის წინ"}</span>
                   </div>
                   {profile.location && (
-                    <div className="flex items-center gap-1 text-gray-400 text-sm">
+                    <div className="flex items-center gap-1.5">
                        <MapPinIcon className="h-4 w-4" />
                        <span>{profile.location}</span>
                     </div>
                   )}
                   {age !== null && (
-                    <div className="flex items-center gap-1 text-gray-400 text-sm">
+                    <div className="flex items-center gap-1.5">
                        <CakeIcon className="h-4 w-4" />
                        <span>{age} წლის</span>
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-gray-300">{profile.bio || "ბიოგრაფია არ არის დამატებული."}</p>
+                <p className="mt-4 text-gray-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
+                  {profile.bio || "ბიოგრაფია არ არის დამატებული."}
+                </p>
               </div>
 
               {/* Actions */}
-              {/* Stack buttons vertically on small screens */}
-              <div className="flex flex-col sm:flex-row gap-2 mt-4 md:mt-0 w-full md:w-auto">
+              <div className="flex gap-3 mt-6 lg:mt-0 flex-shrink-0">
                 <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
                   <DialogTrigger asChild>
                     <Button 
                       variant="outline" 
-                      className="bg-gray-800 border-gray-700 hover:bg-gray-700 w-full sm:w-auto"
+                      className="bg-gray-800/80 border-gray-600 hover:bg-gray-700 backdrop-blur-sm"
                     >
                       <Settings className="h-4 w-4 mr-2" />
                       პარამეტრები
@@ -722,14 +723,14 @@ export default function ProfilePage() {
                 {showRefreshButton && (
                   <Button 
                     variant="outline" 
-                    className="bg-gray-800 border-gray-700 hover:bg-gray-700"
+                    className="bg-gray-800/80 border-gray-600 hover:bg-gray-700 backdrop-blur-sm"
                     onClick={handleRefreshSession}
                     disabled={isRefreshing}
                   >
                     {isRefreshing ? (
                       <div className="h-4 w-4 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
                     ) : (
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path 
                           d="M1 4V10H7" 
                           stroke="currentColor" 
@@ -756,35 +757,15 @@ export default function ProfilePage() {
                     სესიის განახლება
                   </Button>
                 )}
-                
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="bg-gray-800 border-gray-700 hover:bg-gray-700 px-2">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="bg-gray-900 border-gray-800 text-gray-200">
-                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                      <Eye className="h-4 w-4 mr-2" />
-                      საჯაროდ ნახვა
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-gray-800" />
-                    <DropdownMenuItem className="text-red-500 hover:bg-gray-800 hover:text-red-500 cursor-pointer">
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      ანგარიშის წაშლა
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Stats overview */}
-        <div className="container mx-auto px-4 py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            {/* Top List Right */}
+        {/* Stats and sections */}
+        <div className="container mx-auto px-6 py-8">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            {/* Top List */}
             <TopListSection isOwner={isOwnProfile} username={profile.username ?? undefined} />
 
             {/* Favorite characters */}
@@ -793,55 +774,65 @@ export default function ProfilePage() {
         </div>
 
         {/* Content tabs */}
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto px-6 py-8">
           <Tabs defaultValue="manga" className="w-full">
-            {/* Make TabsList scrollable on small screens */} 
-            <TabsList className="mb-6 overflow-x-auto justify-start">
-              <TabsTrigger value="manga" className="flex items-center gap-2 flex-shrink-0">
+            <TabsList className="mb-8 overflow-x-auto justify-start bg-gray-900/50 border border-gray-800">
+              <TabsTrigger value="manga" className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-purple-600">
                 <BookOpen className="h-4 w-4" />
                 მანგა
               </TabsTrigger>
-              <TabsTrigger value={"comics" as any} className="flex items-center gap-2 flex-shrink-0">
+              <TabsTrigger value={"comics" as any} className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-green-600">
                 <Book className="h-4 w-4" />
                 კომიქსი
               </TabsTrigger>
-              <TabsTrigger value="activity" className="flex items-center gap-2 flex-shrink-0">
+              <TabsTrigger value="activity" className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-blue-600">
                 <TrendingUp className="h-4 w-4" />
                 აქტივობა
               </TabsTrigger>
-              <TabsTrigger value="history" className="flex items-center gap-2 flex-shrink-0">
+              <TabsTrigger value="history" className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-orange-600">
                 <History className="h-4 w-4" />
                 ისტორია
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="manga">
-              <div className="mb-6">
-                {/* Make tab controls scrollable & buttons smaller */}
-                <div className="flex items-center justify-between mb-4 overflow-x-auto pb-2">
-                  <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                <div className="flex items-center justify-between mb-6 overflow-x-auto pb-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <Button
                       variant="ghost"
-                      size="sm" // Smaller buttons
-                      className={cn("text-xs md:text-sm", activeMangaTab === "reading" ? "bg-gray-800" : "hover:bg-gray-800/50")}
+                      size="sm"
+                      className={cn(
+                        "text-sm transition-all",
+                        activeMangaTab === "reading" 
+                          ? "bg-purple-600 text-white hover:bg-purple-700" 
+                          : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                      )}
                       onClick={() => setActiveMangaTab("reading")}
                     >
                       ვკითხულობ ({stats.manga.reading})
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm" // Smaller buttons
-                      className={cn("text-xs md:text-sm", activeMangaTab === "completed" ? "bg-gray-800" : "hover:bg-gray-800/50")}
+                      size="sm"
+                      className={cn(
+                        "text-sm transition-all",
+                        activeMangaTab === "completed" 
+                          ? "bg-blue-600 text-white hover:bg-blue-700" 
+                          : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                      )}
                       onClick={() => setActiveMangaTab("completed")}
                     >
                       დასრულებული ({stats.manga.completed})
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm" // Smaller buttons
+                      size="sm"
                       className={cn(
-                        "text-xs md:text-sm",
-                        activeMangaTab === "planToRead" ? "bg-gray-800" : "hover:bg-gray-800/50",
+                        "text-sm transition-all",
+                        activeMangaTab === "planToRead" 
+                          ? "bg-green-600 text-white hover:bg-green-700" 
+                          : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
                       )}
                       onClick={() => setActiveMangaTab("planToRead")}
                     >
@@ -849,7 +840,7 @@ export default function ProfilePage() {
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-xs md:text-sm hover:bg-gray-800/50">
+                        <Button variant="ghost" size="sm" className="text-sm hover:bg-gray-800/50 text-gray-400 hover:text-white">
                           მეტი <ChevronDown className="h-4 w-4 ml-1" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -865,36 +856,50 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Responsive grid columns for manga list */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                   {activeMangaTab === "reading" &&
                     (mangaReading.length > 0 ? 
-                      mangaReading.map((manga) => <MangaListItem key={manga.id} item={manga} onRemove={() => setMangaReading(prev => prev.filter(i => i.id !== manga.id))} />) :
-                      <div className="col-span-full text-center py-10 text-gray-400">თქვენს სიაში არ არის მანგა რომელსაც კითხულობთ</div>
+                      mangaReading.map((manga) => <ContentCard key={manga.id} item={manga} onRemove={() => setMangaReading(prev => prev.filter(i => i.id !== manga.id))} />) :
+                      <div className="col-span-full text-center py-16 text-gray-400">
+                        <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>თქვენს სიაში არ არის მანგა რომელსაც კითხულობთ</p>
+                      </div>
                     )
                   }
                   {activeMangaTab === "completed" &&
                     (mangaCompleted.length > 0 ? 
-                      mangaCompleted.map((manga) => <MangaListItem key={manga.id} item={manga} onRemove={() => setMangaCompleted(prev => prev.filter(i => i.id !== manga.id))} />) :
-                      <div className="col-span-full text-center py-10 text-gray-400">თქვენს სიაში არ არის დასრულებული მანგა</div>
+                      mangaCompleted.map((manga) => <ContentCard key={manga.id} item={manga} onRemove={() => setMangaCompleted(prev => prev.filter(i => i.id !== manga.id))} />) :
+                      <div className="col-span-full text-center py-16 text-gray-400">
+                        <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>თქვენს სიაში არ არის დასრულებული მანგა</p>
+                      </div>
                     )
                   }
                   {activeMangaTab === "planToRead" &&
                     (mangaPlanToRead.length > 0 ? 
-                      mangaPlanToRead.map((manga) => <MangaListItem key={manga.id} item={manga} onRemove={() => setMangaPlanToRead(prev => prev.filter(i => i.id !== manga.id))} />) :
-                      <div className="col-span-full text-center py-10 text-gray-400">თქვენს სიაში არ არის წასაკითხი მანგა</div>
+                      mangaPlanToRead.map((manga) => <ContentCard key={manga.id} item={manga} onRemove={() => setMangaPlanToRead(prev => prev.filter(i => i.id !== manga.id))} />) :
+                      <div className="col-span-full text-center py-16 text-gray-400">
+                        <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>თქვენს სიაში არ არის წასაკითხი მანგა</p>
+                      </div>
                     )
                   }
                   {activeMangaTab === "on_hold" &&
                     (mangaOnHold.length > 0 ? 
-                      mangaOnHold.map((manga) => <MangaListItem key={manga.id} item={manga} onRemove={() => setMangaOnHold(prev => prev.filter(i => i.id !== manga.id))} />) :
-                      <div className="col-span-full text-center py-10 text-gray-400">თქვენს სიაში არ არის შეჩერებული მანგა</div>
+                      mangaOnHold.map((manga) => <ContentCard key={manga.id} item={manga} onRemove={() => setMangaOnHold(prev => prev.filter(i => i.id !== manga.id))} />) :
+                      <div className="col-span-full text-center py-16 text-gray-400">
+                        <PauseCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>თქვენს სიაში არ არის შეჩერებული მანგა</p>
+                      </div>
                     )
                   }
                   {activeMangaTab === "dropped" &&
                     (mangaDropped.length > 0 ? 
-                      mangaDropped.map((manga) => <MangaListItem key={manga.id} item={manga} onRemove={() => setMangaDropped(prev => prev.filter(i => i.id !== manga.id))} />) :
-                      <div className="col-span-full text-center py-10 text-gray-400">თქვენს სიაში არ არის მიტოვებული მანგა</div>
+                      mangaDropped.map((manga) => <ContentCard key={manga.id} item={manga} onRemove={() => setMangaDropped(prev => prev.filter(i => i.id !== manga.id))} />) :
+                      <div className="col-span-full text-center py-16 text-gray-400">
+                        <X className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p>თქვენს სიაში არ არის მიტოვებული მანგა</p>
+                      </div>
                     )
                   }
                 </div>
@@ -902,15 +907,51 @@ export default function ProfilePage() {
             </TabsContent>
 
             <TabsContent value={"comics" as any}>
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-4 overflow-x-auto pb-2">
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "reading" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={()=>setActiveMangaTab('reading')}>ვკითხულობ ({stats.comics.reading})</Button>
-                    <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "completed" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={()=>setActiveMangaTab('completed')}>დასრულებული ({stats.comics.completed})</Button>
-                    <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "planToRead" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={()=>setActiveMangaTab('planToRead')}>წასაკითხი ({stats.comics.planToRead})</Button>
+              <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                <div className="flex items-center justify-between mb-6 overflow-x-auto pb-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "text-sm transition-all",
+                        activeMangaTab === "reading" 
+                          ? "bg-green-600 text-white hover:bg-green-700" 
+                          : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                      )}
+                      onClick={() => setActiveMangaTab("reading")}
+                    >
+                      ვკითხულობ ({stats.comics.reading})
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "text-sm transition-all",
+                        activeMangaTab === "completed" 
+                          ? "bg-blue-600 text-white hover:bg-blue-700" 
+                          : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                      )}
+                      onClick={() => setActiveMangaTab("completed")}
+                    >
+                      დასრულებული ({stats.comics.completed})
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "text-sm transition-all",
+                        activeMangaTab === "planToRead" 
+                          ? "bg-purple-600 text-white hover:bg-purple-700" 
+                          : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                      )}
+                      onClick={() => setActiveMangaTab("planToRead")}
+                    >
+                      წასაკითხი ({stats.comics.planToRead})
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-xs md:text-sm hover:bg-gray-800/50">
+                        <Button variant="ghost" size="sm" className="text-sm hover:bg-gray-800/50 text-gray-400 hover:text-white">
                           მეტი <ChevronDown className="h-4 w-4 ml-1" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -925,19 +966,22 @@ export default function ProfilePage() {
                     </DropdownMenu>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-4">
-                  {activeMangaTab === 'reading' && (comicsReading.length>0? comicsReading.map(c=> <MangaListItem key={c.id} item={c} onRemove={() => setComicsReading(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                  {activeMangaTab === 'completed' && (comicsCompleted.length>0? comicsCompleted.map(c=> <MangaListItem key={c.id} item={c} onRemove={() => setComicsCompleted(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                  {activeMangaTab === 'planToRead' && (comicsPlanToRead.length>0? comicsPlanToRead.map(c=> <MangaListItem key={c.id} item={c} onRemove={() => setComicsPlanToRead(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                  {activeMangaTab === 'on_hold' && (comicsOnHold.length>0? comicsOnHold.map(c=> <MangaListItem key={c.id} item={c} onRemove={() => setComicsOnHold(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                  {activeMangaTab === 'dropped' && (comicsDropped.length>0? comicsDropped.map(c=> <MangaListItem key={c.id} item={c} onRemove={() => setComicsDropped(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                  {activeMangaTab === 'reading' && (comicsReading.length>0? comicsReading.map(c=> <ContentCard key={c.id} item={c} onRemove={() => setComicsReading(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-16 text-gray-400"><Book className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                  {activeMangaTab === 'completed' && (comicsCompleted.length>0? comicsCompleted.map(c=> <ContentCard key={c.id} item={c} onRemove={() => setComicsCompleted(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-16 text-gray-400"><Book className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                  {activeMangaTab === 'planToRead' && (comicsPlanToRead.length>0? comicsPlanToRead.map(c=> <ContentCard key={c.id} item={c} onRemove={() => setComicsPlanToRead(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-16 text-gray-400"><Book className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                  {activeMangaTab === 'on_hold' && (comicsOnHold.length>0? comicsOnHold.map(c=> <ContentCard key={c.id} item={c} onRemove={() => setComicsOnHold(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-16 text-gray-400"><PauseCircle className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                  {activeMangaTab === 'dropped' && (comicsDropped.length>0? comicsDropped.map(c=> <ContentCard key={c.id} item={c} onRemove={() => setComicsDropped(prev => prev.filter(i => i.id !== c.id))}/>):<div className="col-span-full text-center py-16 text-gray-400"><X className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
                 </div>
               </div>
             </TabsContent>
 
             <TabsContent value="activity">
-              <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6">
-                <h2 className="text-xl font-bold mb-4">ბოლო აქტივობა</h2>
+              <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-blue-400" />
+                  ბოლო აქტივობა
+                </h2>
 
                 <div className="space-y-4">
                   {activities.length > 0 ? (
@@ -952,8 +996,9 @@ export default function ProfilePage() {
                       />
                     ))
                   ) : (
-                    <div className="text-center py-10 text-gray-400">
-                      აქტივობა არ მოიძებნა
+                    <div className="text-center py-16 text-gray-400">
+                      <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>აქტივობა არ მოიძებნა</p>
                     </div>
                   )}
                 </div>
@@ -962,30 +1007,36 @@ export default function ProfilePage() {
 
             {/* Reading History Tab */}
             <TabsContent value="history">
-              <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6">
-                <h2 className="text-xl font-bold mb-4">ბოლო წაკითხვები</h2>
+              <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                  <History className="h-5 w-5 text-orange-400" />
+                  ბოლო წაკითხვები
+                </h2>
                 {recentReads.length > 0 ? (
                   <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                     {recentReads.map((item, idx) => (
-                      <div key={`${item.mangaId}-${item.chapterId}-${idx}`} className="flex items-start gap-4 p-3 bg-gray-800/50 rounded-lg">
-                        <div className="w-16 h-24 flex-shrink-0 overflow-hidden rounded">
+                      <div key={`${item.mangaId}-${item.chapterId}-${idx}`} className="flex items-start gap-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-gray-600/50 transition-all">
+                        <div className="w-16 h-24 flex-shrink-0 overflow-hidden rounded-lg">
                           <ImageSkeleton
                             src={item.mangaThumbnail || '/placeholder.svg'}
                             alt={item.mangaTitle}
-                            className="w-full h-full object-cover rounded-[10px]"
+                            className="w-full h-full object-cover"
                           />
                         </div>
                         <div className="flex-1">
-                          <div className="font-semibold text-sm mb-0.5 line-clamp-2">{item.mangaTitle}</div>
-                          <div className="text-xs text-gray-400 mb-1">თავი {item.chapterNumber}: {item.chapterTitle}</div>
-                          <Progress value={Math.round((item.currentPage / Math.max(1, item.totalPages)) * 100)} className="h-1 mb-1" />
+                          <div className="font-semibold text-sm mb-1 line-clamp-2">{item.mangaTitle}</div>
+                          <div className="text-xs text-gray-400 mb-2">თავი {item.chapterNumber}: {item.chapterTitle}</div>
+                          <Progress value={Math.round((item.currentPage / Math.max(1, item.totalPages)) * 100)} className="h-2 mb-2" />
                           <div className="text-xs text-gray-500">{getTimeAgo(new Date(item.lastRead))}</div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-10 text-gray-400">ისტორია ცარიელია</div>
+                  <div className="text-center py-16 text-gray-400">
+                    <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>ისტორია ცარიელია</p>
+                  </div>
                 )}
               </div>
             </TabsContent>
@@ -1014,26 +1065,12 @@ export default function ProfilePage() {
   )
 }
 
-// Helper components
-function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return (
-    <div className="bg-gray-800/50 p-4 rounded-lg flex items-center">
-      <div className="mr-4 text-blue-400">{icon}</div>
-      <div>
-        <div className="text-gray-400 text-sm">{label}</div>
-        <div className="text-xl font-bold">{value}</div>
-      </div>
-    </div>
-  )
-}
-
-function MangaListItem({ item, onRemove }: { item: ContentItem; onRemove: () => void }) {
+// Enhanced Content Card Component
+function ContentCard({ item, onRemove }: { item: ContentItem; onRemove: () => void }) {
   const [currentStatus, setCurrentStatus] = useState(item.status);
 
   const handleStatusChange = (newStatus: MediaStatus | null) => {
     setCurrentStatus(newStatus);
-    // You might want to refresh the list or move the item to a different tab here
-    // For now, it just updates locally to reflect the change immediately
   };
   
   const handleRemove = async () => {
@@ -1048,18 +1085,17 @@ function MangaListItem({ item, onRemove }: { item: ContentItem; onRemove: () => 
   };
 
   return (
-    <div className="rounded-[10px] overflow-hidden group flex flex-col">
+    <div className="group relative bg-gray-800/30 rounded-xl overflow-hidden border border-gray-700/50 hover:border-gray-600/50 transition-all duration-300 hover:scale-105">
       <div className="relative">
         <ImageSkeleton
           src={item.image || "/placeholder.svg"}
           alt={item.georgianTitle}
-          className="w-full aspect-[2/3] object-cover rounded-[10px]"
-          style={{borderRadius: '10px'}}
+          className="w-full aspect-[2/3] object-cover"
         />
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 bg-black/50 hover:bg-black/70 rounded-full">
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 bg-black/60 hover:bg-black/80 rounded-full backdrop-blur-sm">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -1074,39 +1110,40 @@ function MangaListItem({ item, onRemove }: { item: ContentItem; onRemove: () => 
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </div>
-      <div className="p-3 flex flex-col flex-grow">
-        <h3 className="font-medium text-sm line-clamp-2 h-10">{item.georgianTitle}</h3>
-        {item.georgianTitle !== item.title && item.title && (
-          <p className="text-xs text-gray-400 line-clamp-1 truncate">{item.title}</p>
-        )}
-
-        <div className="mt-auto pt-2">
-          {item.progress > 0 && (
-            <div className="mt-2">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-gray-400">პროგრესი</span>
-                <span>
-                  {item.progress}/{item.total || "?"}
-                </span>
-              </div>
-              <Progress value={(item.progress / (item.total || item.progress)) * 100} className="h-1 bg-gray-700" />
+        
+        {/* Progress overlay */}
+        {item.progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-white/80">პროგრესი</span>
+              <span className="text-white font-medium">
+                {item.progress}/{item.total || "?"}
+              </span>
             </div>
-          )}
-
-          <div className="mt-2">
-            <StatusSelector
-                mediaId={item.id}
-                mediaType={item.type}
-                mediaTitle={item.georgianTitle}
-                mediaThumbnail={item.image}
-                currentStatus={currentStatus}
-                onStatusChange={handleStatusChange}
-                compact={true}
-                className="w-full justify-center"
+            <Progress 
+              value={(item.progress / (item.total || item.progress)) * 100} 
+              className="h-1.5 bg-gray-700/50" 
             />
           </div>
-        </div>
+        )}
+      </div>
+      
+      <div className="p-4">
+        <h3 className="font-medium text-sm line-clamp-2 mb-2 min-h-[2.5rem]">{item.georgianTitle}</h3>
+        {item.georgianTitle !== item.title && item.title && (
+          <p className="text-xs text-gray-400 line-clamp-1 mb-3">{item.title}</p>
+        )}
+
+        <StatusSelector
+          mediaId={item.id}
+          mediaType={item.type}
+          mediaTitle={item.georgianTitle}
+          mediaThumbnail={item.image}
+          currentStatus={currentStatus}
+          onStatusChange={handleStatusChange}
+          compact={true}
+          className="w-full justify-center"
+        />
       </div>
     </div>
   )
@@ -1126,29 +1163,29 @@ function ActivityItemDisplay({
   time: string;
 }) {
   return (
-    <div className="flex items-start gap-3 p-3 bg-gray-800/50 rounded-lg">
-      <div className={`p-2 rounded-full ${
-        type === "manga" ? "bg-purple-500/20" : "bg-green-500/20"
+    <div className="flex items-start gap-4 p-4 bg-gray-800/30 rounded-lg border border-gray-700/50 hover:border-gray-600/50 transition-all">
+      <div className={`p-3 rounded-full ${
+        type === "manga" ? "bg-purple-500/20 text-purple-400" : "bg-green-500/20 text-green-400"
       }`}>
         {type === "manga" ? (
-          <BookOpen className="h-5 w-5 text-purple-400" />
+          <BookOpen className="h-5 w-5" />
         ) : (
-          <Book className="h-5 w-5 text-green-400" />
+          <Book className="h-5 w-5" />
         )}
       </div>
       <div className="flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-1">
           <span className="font-medium">{action === "reading" ? "კითხულობს" : 
                                          action === "completed" ? "დაასრულა" : 
                                          action === "updated" ? "განაახლა" : action}</span>
-          <span className="text-gray-400">•</span>
+          <span className="text-gray-500">•</span>
           <span className="text-gray-300">{title}</span>
         </div>
         <div className="text-sm text-gray-400">
           {details.includes("Chapter") ? details.replace("Chapter", "თავი") : details}
         </div>
       </div>
-      <div className="text-xs text-gray-500">{time}</div>
+      <div className="text-xs text-gray-500 flex-shrink-0">{time}</div>
     </div>
   )
 }

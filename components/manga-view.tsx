@@ -113,15 +113,16 @@ interface ContentItem {
   release_year?: number;
   totalChapters?: number;
   view_count?: number;
+  currentPage?: number
+  totalPages?: number
+  chapterNumber?: number
+  readDate?: string
 }
 
 interface MangaViewProps {
-  selectedCategory?: string
-  setSelectedCategory: (category: string) => void
-  categories: string[]
   hoveredCard: string | null
   setHoveredCard: (id: string | null) => void
-  contentData?: ContentItem[]
+  contentData: ContentItem[]
   contentType?: 'manga' | 'comics'
 }
 
@@ -198,7 +199,7 @@ function toggleContentFavorite(content: ContentItem): boolean {
 }
 
 // Manga Card Component 
-function MangaCard({ content, index }: { content: ContentItem; index: number }) {
+export function MangaCard({ content, index, isContinueReading = false }: { content: ContentItem; index: number; isContinueReading?: boolean }) {
   const router = useRouter();
   const cardRef = useRef<HTMLDivElement>(null);
   const hasBeenRead = hasMangaBeenRead(content.id);
@@ -253,10 +254,14 @@ function MangaCard({ content, index }: { content: ContentItem; index: number }) 
   
   // Calculate overall manga progress
   const progressPercentage = hasBeenRead ? 
-    calculateMangaProgressByChapter(latestChapterRead, totalChapters) : 0;
+    (isContinueReading && content.currentPage && content.totalPages) ?
+      Math.round((content.currentPage / content.totalPages) * 100) :
+      calculateMangaProgressByChapter(latestChapterRead, totalChapters) : 0;
   
   // Format chapters display text
-  const chaptersDisplay = content.chapters || (totalChapters > 0 ? `${totalChapters} თავი` : "0 თავი");
+  const chaptersDisplay = isContinueReading ?
+    `გვ. ${content.currentPage || 0}/${content.totalPages || 0} • თ. ${content.chapterNumber || 0}` :
+    content.chapters || (totalChapters > 0 ? `${totalChapters} თავი` : "0 თავი");
     
   // Handle favorite click
   const handleFavoriteClick = (e: React.MouseEvent) => {
@@ -265,6 +270,7 @@ function MangaCard({ content, index }: { content: ContentItem; index: number }) 
     setIsFavorite(newStatus);
   };
   
+  console.log(`Rendering card for ${content.title} with thumbnail: ${content.thumbnail}`)
   return (
     <m.div
       variants={itemVariants}
@@ -326,29 +332,31 @@ function MangaCard({ content, index }: { content: ContentItem; index: number }) 
           </AnimatePresence>
           
           {/* Favorite button - Top Right */}
-          <button 
-            onClick={handleFavoriteClick}
-            className={cn(
-              "absolute top-2.5 right-2.5 z-20 p-2 rounded-full transition-all duration-300 backdrop-blur-md border",
-              isFavorite 
-                ? "bg-red-500/30 border-red-500/50 text-red-400" 
-                : "bg-black/50 border-white/20 text-white/80 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/40",
-              "opacity-0 group-hover:opacity-100" // Initially hidden, shows on group hover
-            )}
-            aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-          >
-            <m.div
-              initial={{ scale: 1 }}
-              animate={{ scale: isFavorite ? 1.1 : 1 }}
-              whileTap={{ scale: 0.9 }}
-              transition={{ type: "spring", stiffness: 400, damping: 12 }}
+          {!isContinueReading && (
+            <button 
+              onClick={handleFavoriteClick}
+              className={cn(
+                "absolute top-2.5 right-2.5 z-20 p-2 rounded-full transition-all duration-300 backdrop-blur-md border",
+                isFavorite 
+                  ? "bg-red-500/30 border-red-500/50 text-red-400" 
+                  : "bg-black/50 border-white/20 text-white/80 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/40",
+                "opacity-0 group-hover:opacity-100" // Initially hidden, shows on group hover
+              )}
+              aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
-              <Heart className={cn("w-4 h-4", isFavorite && "fill-current")} />
-            </m.div>
-          </button>
+              <m.div
+                initial={{ scale: 1 }}
+                animate={{ scale: isFavorite ? 1.1 : 1 }}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 400, damping: 12 }}
+              >
+                <Heart className={cn("w-4 h-4", isFavorite && "fill-current")} />
+              </m.div>
+            </button>
+          )}
           
           {/* Rating badge */}
-          {content.rating !== undefined && content.rating > 0 && (
+          {!isContinueReading && content.rating !== undefined && content.rating > 0 && (
             <div className="badge-rating absolute top-2 left-2">
               <Star className="h-3 w-3 fill-current text-yellow-400" />
               <span>{content.rating.toFixed(1)}</span>
@@ -356,15 +364,22 @@ function MangaCard({ content, index }: { content: ContentItem; index: number }) 
           )}
           
           {/* Chapter Count Badge */}
-          <div className="absolute bottom-2.5 left-2.5 bg-black/70 backdrop-blur-sm px-2.5 py-1 rounded-lg text-xs text-white/90 border border-white/20 shadow-md">
+          <div className="absolute bottom-2.5 left-2.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded-lg text-[10px] text-white/90 border border-white/20 shadow-md truncate max-w-[45%]">
             {chaptersDisplay}
           </div>
+          
+          {/* Read Date Badge */}
+          {isContinueReading && content.readDate && (
+            <div className="absolute bottom-2.5 right-2.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded-lg text-[10px] text-white/90 border border-white/20 shadow-md truncate max-w-[45%]">
+              {content.readDate}
+            </div>
+          )}
           
           {/* Friend Avatars Overlay */}
           {friendStatuses.length > 0 && (
             <TooltipProvider delayDuration={150}>
               <div
-                className="absolute top-[35px] left-[5px] flex items-center -space-x-2 z-30 no-tilt"
+                className={`absolute ${isContinueReading ? 'top-[6px]' : 'top-[35px]'} left-[5px] flex items-center -space-x-2 z-30 no-tilt`}
                 onMouseEnter={() => {
                   disableTiltRef.current = true;
                   rotateX.set(0);
@@ -408,7 +423,7 @@ function MangaCard({ content, index }: { content: ContentItem; index: number }) 
           )}
           
           {/* View Count badge */}
-          {content.view_count !== undefined && (
+          {!isContinueReading && content.view_count !== undefined && (
             <div className="absolute bottom-2.5 right-2.5 flex flex-wrap gap-1 max-w-[calc(100%-1rem)]">
               <div className="text-xs px-2.5 py-1 bg-black/70 backdrop-blur-sm rounded-lg truncate max-w-full border border-white/20 shadow-md flex items-center gap-1">
                 <Eye className="w-3 h-3 text-white/70" />
@@ -475,9 +490,6 @@ function MangaCard({ content, index }: { content: ContentItem; index: number }) 
 }
 
 export function MangaView({
-  selectedCategory = "ყველა",
-  setSelectedCategory,
-  categories,
   hoveredCard,
   setHoveredCard,
   contentData = [],
@@ -490,11 +502,10 @@ export function MangaView({
   const dataToUse = contentData.length > 0 ? contentData : items
   const [localLoading, setLocalLoading] = useState(dataToUse.length === 0)
   const [localContentData, setLocalContentData] = useState<ContentItem[]>(dataToUse)
+  const [hasFetched, setHasFetched] = useState(false)
   
   // Filter content based on selected category
-  const filteredContent = selectedCategory === "ყველა" 
-    ? localContentData 
-    : localContentData.filter(content => content.genres?.includes(selectedCategory))
+  const filteredContent = localContentData.filter(content => content.genres?.includes(contentType));
 
   // Handle categories scroll
   const scrollCategories = (direction: 'left' | 'right') => {
@@ -522,6 +533,7 @@ export function MangaView({
     if (dataToUse.length > 0) {
       setLocalContentData(dataToUse);
       setLocalLoading(false);
+      setHasFetched(true);
       return;
     }
     
@@ -572,6 +584,7 @@ export function MangaView({
         console.error("Error fetching content:", error);
         setLocalContentData([]);
       } finally {
+        setHasFetched(true);
         setLocalLoading(false);
       }
     }
@@ -579,7 +592,7 @@ export function MangaView({
     fetchData();
   }, [dataToUse.length, contentType]);
 
-  if (localLoading) {
+  if (localLoading || !hasFetched) {
     return (
       <div className="space-y-6 mt-8 md:mt-16">
         <CategorySkeleton count={8} />
@@ -590,92 +603,33 @@ export function MangaView({
 
   return (
     <m.div
-      key={selectedCategory}
+      key={contentType}
       variants={containerVariants}
       initial="hidden"
       animate="visible"
       className="space-y-2"
     >
-      {/* Categories filter */}
-      <div className="relative">
-        <div className="relative group">
-          <div
-            ref={categoriesRef}
-            className="flex space-x-2 overflow-x-auto pb-3 scrollbar-hide"
-          >
-            {["ყველა", ...categories].map((category) => {
-              const displayCategory = category === "ყველა" ? "ყველა" : translateGenre(category);
-              return (
-                <m.button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={cn(
-                    "relative px-4 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors duration-200",
-                    selectedCategory !== category && "text-gray-400 hover:text-white hover:bg-white/10",
-                    selectedCategory === category && "text-white"
-                  )}
-                  whileTap={{ scale: 0.97 }}
-                  initial={{ opacity: 0.8 }}
-                  animate={{ opacity: 1 }}
-                >
-                  {selectedCategory === category && (
-                    <m.div
-                      layoutId={`activeCategoryIndicator-${contentType}`}
-                      className="absolute inset-0 bg-gradient-to-r from-purple-600/50 to-indigo-600/50 border border-purple-500/40 rounded-lg z-0 shadow-inner shadow-purple-900/20"
-                      initial={false}
-                      animate={{ opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative z-10">{displayCategory}</span>
-                </m.button>
-              );
-            })}
-          </div>
-          
-          {/* Navigation buttons */}
-          <button
-            aria-label="Scroll left"
-            className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-5 bg-black/40 backdrop-blur-sm rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-black/60 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-[#070707] z-10"
-            onClick={() => scrollCategories('left')}
-          >
-            <ChevronRight className="w-4 h-4 rotate-180 text-white/80" />
-          </button>
-          
-          <button
-            aria-label="Scroll right"
-            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-5 bg-black/40 backdrop-blur-sm rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-black/60 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-[#070707] z-10"
-            onClick={() => scrollCategories('right')}
-          >
-            <ChevronRight className="w-4 h-4 text-white/80" />
-          </button>
+      {localContentData.length === 0 ? (
+        <div className="text-center py-20 bg-white/5 rounded-xl">
+          <p className="text-white/60">კონტენტი ვერ მოიძებნა</p>
+          <img src="/images/mascot/confused.png" alt="No content mascot" className="mx-auto mt-4 w-32 h-32" />
         </div>
-      </div>
-
-      {/* Content grid */}
-      <div>
-        {filteredContent.length === 0 ? (
-          <div className="text-center py-20 bg-white/5 rounded-xl">
-            <p className="text-white/60">ამ კატეგორიაში კონტენტი ვერ მოიძებნა</p>
-            <img src="/images/mascot/confused.png" alt="No content mascot" className="mx-auto mt-4 w-32 h-32" />
-          </div>
-        ) : (
-          <m.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9 gap-3 md:gap-4"
-          >
-            {filteredContent.map((content, index) => (
-              <MangaCard 
-                key={content.id} 
-                content={content}
-                index={index}
-              />
-            ))}
-          </m.div>
-        )}
-      </div>
+      ) : (
+        <m.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9 gap-3 md:gap-4"
+        >
+          {contentData.map((content, index) => (
+            <MangaCard 
+              key={content.id} 
+              content={content}
+              index={index}
+            />
+          ))}
+        </m.div>
+      )}
     </m.div>
   );
 }

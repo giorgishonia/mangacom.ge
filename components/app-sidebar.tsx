@@ -47,6 +47,18 @@ import {
 } from "@/lib/notifications"
 import { ka } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
+import { Variants } from "framer-motion"
+
+// Toggle for verbose sidebar logs
+const SIDEBAR_DEBUG = false;
+
+// Add imports
+
+// Add variants consts outside component or inside for labels, etc.
+const labelVariants: Variants = {
+  collapsed: { opacity: 0, x: -10, transition: { duration: 0.2 } },
+  expanded: { opacity: 1, x: 0, transition: { duration: 0.2, delay: 0.1 } }
+}
 
 // Interface for sidebar items
 interface SidebarItemProps {
@@ -58,32 +70,47 @@ interface SidebarItemProps {
   onClick?: () => void
   className?: string
   titleOverride?: string
+  isExpanded?: boolean
 }
 
 // Sidebar item component with Link - text labels hidden in collapsed state
-const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--primary))", onClick, className, titleOverride }: SidebarItemProps) => {
+const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--primary))", onClick, className, titleOverride, isExpanded }: SidebarItemProps) => {
   // Common layout and styling for both button and link variants
   const contentElement = (
     <>
       {isActive && (
         <m.div 
           layoutId="activeTab"
-          className="absolute inset-0 bg-white/10 backdrop-blur-md rounded-xl border border-white/5"
+          className="absolute inset-0 bg-white/10 rounded-xl border border-white/5"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
       
-      <div 
-        className={cn(
-          "flex items-center justify-center h-5 w-5 z-10 sidebar-icon",
-          isActive ? `text-[${accentColor}]` : `group-hover:text-[${accentColor}]`
-        )}
-      >
-        {icon}
-      </div>
+      <m.div layout className="flex-shrink-0">
+        <div 
+          className={cn(
+            "flex items-center justify-center h-5 w-5 z-10 sidebar-icon",
+            isActive ? `text-[${accentColor}]` : `group-hover:text-[${accentColor}]`
+          )}
+        >
+          {icon}
+        </div>
+      </m.div>
+
+      {isExpanded && (
+        <m.span 
+          variants={labelVariants}
+          initial="collapsed"
+          animate={isExpanded ? "expanded" : "collapsed"}
+          className="ml-3 text-sm whitespace-nowrap"
+        >
+          {label}
+        </m.span>
+      )}
 
       {isActive && (
         <m.div 
+          layoutId="activeTab"
           className="absolute left-0 top-0 bottom-0 w-1 bg-[hsl(var(--primary))] rounded-r-full"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: '100%' }}
@@ -95,10 +122,8 @@ const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--pri
 
   // Shared class names for both button and link
   const sharedClassNames = cn(
-    "flex items-center justify-center px-3 py-3 rounded-xl transition-all duration-200 group relative",
-    isActive 
-      ? "text-white" 
-      : "text-white/60 hover:text-white",
+    "flex items-center px-3 py-3 rounded-xl transition-all duration-200 group relative",
+    isActive ? "text-white" : "text-white/60 hover:text-white",
     className
   );
 
@@ -108,7 +133,7 @@ const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--pri
       <button 
         onClick={onClick}
         className={sharedClassNames}
-        title={titleOverride || label}
+        title={!isExpanded ? (titleOverride || label) : undefined}
         type="button"
       >
         {contentElement}
@@ -121,27 +146,14 @@ const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--pri
     <Link 
       href={href || '/'}
       className={sharedClassNames}
-      title={titleOverride || label}
+      title={!isExpanded ? (titleOverride || label) : undefined}
     >
       {contentElement}
     </Link>
   );
 };
 
-// Section component - simplified for collapsed state
-const SidebarSection = ({ title, children }: { 
-  title: string,
-  children: React.ReactNode
-}) => (
-  <div className="mb-5">
-    <div className="text-xs uppercase text-gray-500 font-semibold tracking-wider text-center mb-2.5 px-1 truncate" title={title}>
-      {title.charAt(0)}
-    </div>
-    <div className="space-y-1 px-2">
-      {children}
-    </div>
-  </div>
-);
+// Remove SidebarSection since we're using mobile-like structure
 
 // Main sidebar component
 export function AppSidebar() {
@@ -157,6 +169,7 @@ export function AppSidebar() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
   const [notifLoadError, setNotifLoadError] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   // Removed Supabase Realtime subscription state – polling only
   
   // Check if we're on mobile - only run on client side
@@ -267,11 +280,11 @@ export function AppSidebar() {
   const handleSignOut = async () => {
     try {
       // Use the signOut function directly from the useAuth context
-      console.log("Attempting sign out via useAuth...");
+      if (SIDEBAR_DEBUG) console.log("Attempting sign out via useAuth...");
       await supabaseSignOut(); // Call the hook's signOut, assume it throws on error
       
       // If signOut doesn't throw, assume success
-      console.log("Sign out successful, redirecting...");
+      if (SIDEBAR_DEBUG) console.log("Sign out successful, redirecting...");
       window.location.href = "/"; // Force reload to clear everything
 
     } catch (error) {
@@ -301,11 +314,11 @@ export function AppSidebar() {
       const timeoutId = setTimeout(() => {
         // If still loading after 3 seconds, show a message
         if (isLoadingNotifs) {
-          toast.info("იტვირთება შეტყობინებები...");
+          toast.info("იტვირთება შეტყობინები...");
         }
       }, 3000);
       
-      console.log("Fetching notifications for user:", user.id);
+      if (SIDEBAR_DEBUG) console.log("Fetching notifications for user:", user.id);
       
       // Fetch notifications with caching enabled
       const { success, notifications: fetchedNotifs, error } = await getUserNotifications(user.id);
@@ -314,7 +327,7 @@ export function AppSidebar() {
       clearTimeout(timeoutId);
       
       if (success && fetchedNotifs) {
-        console.log(`Successfully loaded ${fetchedNotifs.length} notifications`);
+        if (SIDEBAR_DEBUG) console.log(`Successfully loaded ${fetchedNotifs.length} notifications`);
         setNotifications(fetchedNotifs);
         
         // Get unread notification IDs for marking as read
@@ -444,137 +457,139 @@ export function AppSidebar() {
   // Desktop sidebar - always collapsed
   return (
     <>
-      <div 
-        className="fixed top-0 left-0 h-screen z-40 w-[78px] overflow-hidden"
+      <m.div
+        className="fixed top-0 left-0 h-screen z-40 overflow-hidden border-r"
+        animate={{ 
+          width: isExpanded ? 240 : 78,
+          backgroundColor: isExpanded ? 'rgba(10,10,10,0.95)' : 'transparent',
+          backdropFilter: isExpanded ? 'blur(24px)' : 'none',
+          borderRightColor: isExpanded ? 'rgba(255,255,255,0.05)' : 'transparent'
+        }}
+        transition={{ type: "spring", damping: 26, stiffness: 300, duration: 0.3 }}
+        onMouseEnter={() => setIsExpanded(true)}
+        onMouseLeave={() => setIsExpanded(false)}
       >
-        {/* Gradient overlay for visual depth */}
-        {/* <div className="absolute inset-0 pointer-events-none" /> */}
-        
-        <div className="h-full flex flex-col relative z-10">
-          <div className="flex items-center justify-center pt-4 pb-4">
-            <Link href="/">
-              <img
-                src="/images/manganimelogo.png"
-                alt="Manganime Logo"
-                className="h-11 w-11 rounded-xl object-cover"
-                title="მთავარი"
-              />
+        <m.div layout className="h-full flex flex-col p-4">
+          <div className={cn(
+            "flex items-center mb-5",
+          )}>
+            <Link href="/" className="flex items-end">
+              <m.img layout src="/images/manganimelogo.png" alt="Manganime Logo" className="h-11 w-11 rounded-xl object-cover" />
+              {isExpanded && <m.h2 layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="ml-3 text-sm mb-[-2px] text-gray-300">მანგანიმე</m.h2>}
             </Link>
           </div>
-          <div className="space-y-1 px-2">
-            <SidebarItem
-              icon={<Home className="stroke-[1.5px]" />}
-              label="მთავარი"
-              href="/"
-              isActive={pathname === "/"}
-            />
-            <SidebarItem
-              icon={<BookOpen className="stroke-[1.5px]" />}
-              label="კითხვა"
-              href="/manga"
-              isActive={pathname === "/manga"}
-            />
-            <SidebarItem
-              icon={<Book className="stroke-[1.5px]" />}
-              label="კომიქსები"
-              href="/comics"
-              isActive={pathname === "/comics"}
-            />
-            
-            <SidebarItem
-              icon={<Heart className="stroke-[1.5px]" />}
-              label="რჩეულები"
-              href="/favorites"
-              isActive={pathname === "/favorites"}
-            />
-            <SidebarItem
-              icon={<Users className="stroke-[1.5px]" />}
-              label="მეგობრები"
-              href="/friends"
-              isActive={pathname === "/friends"}
-            />
-          </div>
-          
-          <div className="space-y-2 px-2">
-            <SidebarItem
-              icon={<History className="stroke-[1.5px]" />}
-              label="ისტორია"
-              href="/history"
-              isActive={pathname === "/history"}
-            />
-            {/* Add Notifications Button */} 
-            <div className="relative">
-              <SidebarItem
-                icon={<Bell className="stroke-[1.5px]" />}
-                label="შეტყობინებები"
-                onClick={openNotifications}
-                className="ml-[10px]"
-              />
-              {/* Unread Count Badge */} 
-              {unreadCount > 0 && (
-                <m.div 
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold pointer-events-none ring-2 ring-[#0a0a0a]"
-                >
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </m.div>
-              )}
+
+          <div className="space-y-4">
+            <div>
+              <m.h3 animate={{ opacity: isExpanded ? 1 : 0}} transition={{ duration: 0.2 }} layout className="text-xs uppercase text-gray-400 mb-2 font-semibold tracking-wider px-3 overflow-hidden">აღმოჩენა</m.h3>
+              <div className="space-y-1">
+                <SidebarItem
+                  icon={<Home className="stroke-[1.5px]" />}
+                  label="მთავარი"
+                  href="/"
+                  isActive={pathname === "/"}
+                  isExpanded={isExpanded}
+                />
+                <SidebarItem
+                  icon={<Search className="stroke-[1.5px]" />}
+                  label="ძიება"
+                  onClick={toggleSearch}
+                  isExpanded={isExpanded}
+                />
+              </div>
+            </div>
+
+            <div>
+              <m.h3 animate={{ opacity: isExpanded ? 1 : 0}} transition={{ duration: 0.2 }} layout className="text-xs uppercase text-gray-400 mb-2 font-semibold tracking-wider px-3 overflow-hidden">ბიბლიოთეკა</m.h3>
+              <div className="space-y-1">
+                <SidebarItem
+                  icon={<History className="stroke-[1.5px]" />}
+                  label="ისტორია"
+                  href="/history"
+                  isActive={pathname === "/history"}
+                  isExpanded={isExpanded}
+                />
+                <SidebarItem
+                  icon={<Heart className="stroke-[1.5px]" />}
+                  label="რჩეულები"
+                  href="/favorites"
+                  isActive={pathname === "/favorites"}
+                  isExpanded={isExpanded}
+                />
+                <SidebarItem
+                  icon={<Users className="stroke-[1.5px]" />}
+                  label="მეგობრები"
+                  href="/friends"
+                  isActive={pathname === "/friends"}
+                  isExpanded={isExpanded}
+                />
+              </div>
+            </div>
+
+            <div>
+              <m.h3 animate={{ opacity: isExpanded ? 1 : 0}} transition={{ duration: 0.2 }} layout className="text-xs uppercase mb-2 text-gray-400 font-semibold tracking-wider px-3 overflow-hidden">საზოგადოება</m.h3>
+              <div className="space-y-1">
+                <SidebarItem
+                  icon={<Lightbulb className="stroke-[1.5px]" />}
+                  label="შემოთავაზებები"
+                  href="/suggestions"
+                  isActive={pathname === "/suggestions"}
+                  isExpanded={isExpanded}
+                />
+                <div className="relative">
+                  <SidebarItem
+                    icon={<Bell className="stroke-[1.5px]" />}
+                    label="შეტყობინებები"
+                    onClick={openNotifications}
+                    isExpanded={isExpanded}
+                  />
+                  {unreadCount > 0 && (
+                    <m.div 
+                      className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold pointer-events-none ring-2 ring-[#0a0a0a]"
+                    >
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </m.div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-          
-          <div className="space-y-2 px-2">
-            <SidebarItem
-              icon={<Lightbulb className="stroke-[1.5px]" />}
-              label="შემოთავაზებები"
-              href="/suggestions"
-              isActive={pathname === "/suggestions"}
-            />
-             <SidebarItem
-              icon={<Search className="stroke-[1.5px]" />}
-              label="ძიება"
-              isActive={false}
-              onClick={toggleSearch}
-              className="ml-[10px]"
-            />
-          </div>
-          
-          <div className="mt-auto pb-5 border-t border-white/5 pt-6 mx-3">
-          
-            <div className="space-y-2 px-2">
+
+          <div className="mt-auto pt-5 border-t border-white/5">
+            <div className="space-y-1">
               {user ? (
                 <>
                   <Link 
                     href="/profile"
                     className={cn(
-                      "flex items-center justify-center p-2 rounded-xl transition-all duration-200 group relative",
+                      "flex items-center py-3 rounded-xl transition-all duration-200 group relative",
+                      isExpanded ? "justify-start px-3" : "px-3",
                       pathname === "/profile" ? "bg-white/10" : "hover:bg-white/5"
                     )}
-                    title="პროფილი"
                   >
-                    <Avatar 
-                      className={cn(
-                        "h-7 w-7 ring-1", 
-                        profile?.vip_status 
-                          ? (profile.vip_theme ? `ring-${profile.vip_theme}-500 ring-2` : "ring-yellow-400 ring-2") 
-                          : "ring-white/10"
-                      )}
-                      key={profile?.avatar_url || user?.user_metadata?.avatar_url}
-                    >
-                      <AvatarImage 
-                        src={getSupabaseAvatarUrl(user?.id || '', profile?.avatar_url || null) || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${user?.id}`} 
-                        alt={profile?.username || user?.email || "User"} 
-                      />
-                      <AvatarFallback>
-                        {profile?.username?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
+                    <m.div layout>
+                      <Avatar 
+                        className={cn(
+                          "h-7 w-7 ring-1", 
+                          profile?.vip_status 
+                            ? (profile.vip_theme ? `ring-${profile.vip_theme}-500 ring-2` : "ring-yellow-400 ring-2") 
+                            : "ring-white/10"
+                        )}
+                        key={profile?.avatar_url || user?.user_metadata?.avatar_url}
+                      >
+                        <AvatarImage 
+                          src={getSupabaseAvatarUrl(user?.id || '', profile?.avatar_url || null) || "/placeholder-user.jpg"} 
+                          alt={profile?.username || user?.email || "User"} 
+                        />
+                        <AvatarFallback>
+                          {profile?.username?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                    </m.div>
+                    {isExpanded && <m.span layout className="ml-3">პროფილი</m.span>}
                     {pathname === "/profile" && (
                       <m.div 
                         className="absolute left-0 top-0 bottom-0 w-1 bg-[hsl(var(--primary))] rounded-r-full"
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: '100%' }}
-                        exit={{ opacity: 0, height: 0 }}
                       />
                     )}
                   </Link>
@@ -583,13 +598,14 @@ export function AppSidebar() {
                     label="პარამეტრები"
                     href="/settings"
                     isActive={pathname === "/settings"}
+                    isExpanded={isExpanded}
                   />
                   <SidebarItem
                     icon={<LogOut className="stroke-[1.5px]" />}
                     label="გასვლა"
                     onClick={handleSignOut}
                     accentColor="rgb(248 113 113)"
-                    titleOverride="გასვლა"
+                    isExpanded={isExpanded}
                   />
                 </>
               ) : (
@@ -599,13 +615,13 @@ export function AppSidebar() {
                   href="/login"
                   isActive={pathname === "/login"}
                   accentColor="rgb(248 113 113)"
-                  titleOverride="შესვლა"
+                  isExpanded={isExpanded}
                 />
               )}
             </div>
           </div>
-        </div>
-      </div>
+        </m.div>
+      </m.div>
       
       {/* Search Modal */}
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
@@ -662,7 +678,7 @@ export function AppSidebar() {
                 ) : notifications.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-white/70">არ გაქვთ შეტყობინებები</p>
-                    <p className="text-sm text-white/50 mt-1">როდესაც მიიღებთ შეტყობინებებს, ისინი აქ გამოჩნდება</p>
+                    <p className="text-sm text-white/50 mt-1">როდესაც მიიღებთ შეტყობინებს, ისინი აქ გამოჩნდება</p>
                     <img src="/images/mascot/no-notifications.png" alt="No notifications mascot" className="mx-auto w-32 h-32 mt-4" />
                   </div>
                 ) : (
@@ -694,7 +710,7 @@ export function AppSidebar() {
                       const generateNotificationLink = (n: Notification): string => {
                         const type = (n as any).content_type || ''; // Default to empty if not present
                         const contentId = (n as any).content_id || '';
-                        const commentId = (n as any).comment_id || null;
+                        const commentId = notif.comment_id || (notif as any).comment_id || null;
                         if (!type || !contentId) return '#'; // Cannot link without type/id
                         // Link to the specific comment if comment_id is present
                         if (commentId) {
@@ -794,11 +810,13 @@ export function AppSidebar() {
                         >
                           {/* Avatar/Icon */} 
                           <div className="mr-3 flex-shrink-0 pt-0.5"> {/* Added padding-top */}
-                            {notif.sender_profile?.avatar_url && notif.type.startsWith('comment_') ? (
-                              <Avatar className="h-8 w-8">
-                                  <AvatarImage src={notif.sender_profile.avatar_url} alt={notif.sender_profile.username || ''} />
-                                  <AvatarFallback>{notif.sender_profile.username?.[0]?.toUpperCase() || '?'}</AvatarFallback>
-                              </Avatar>
+                            {notif.sender_profile?.avatar_url ? (
+                              <Link href={`/profile/${notif.sender_profile.username || notif.sender_user_id}`} onClick={closeNotifications}>
+                                <Avatar className="h-8 w-8">
+                                    <AvatarImage src={notif.sender_profile.avatar_url} alt={notif.sender_profile.username || ''} />
+                                    <AvatarFallback>{notif.sender_profile.username?.[0]?.toUpperCase() || '?'}</AvatarFallback>
+                                </Avatar>
+                              </Link>
                             ) : (
                               <div className="h-8 w-8 flex items-center justify-center bg-gray-700/50 rounded-full">
                                 {IconComponent} 
@@ -904,11 +922,9 @@ function MobileSidebarContent({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-5">
-        <Link href="/" className="flex items-center">
-          <div className="h-11 w-11 bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] text-white rounded-xl flex items-center justify-center font-bold text-lg shadow-lg">
-            M
-          </div>
-          <h2 className="ml-3 text-xl font-bold text-white">Manganime</h2>
+        <Link href="/" className="flex items-end">
+          <img src="/images/manganimelogo.png" alt="Manganime Logo" className="h-11 w-11 rounded-xl object-cover" />
+          <h2 className="ml-3 text-sm mb-[-2px] text-gray-300">მანგანიმე</h2>
         </Link>
         <button 
           onClick={onClose}
@@ -931,7 +947,7 @@ function MobileSidebarContent({
             key={authProfile?.avatar_url || user?.user_metadata?.avatar_url}
           >
             <AvatarImage 
-              src={getSupabaseAvatarUrl(user?.id || '', authProfile?.avatar_url || null) || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${user?.id}`} 
+              src={getSupabaseAvatarUrl(user?.id || '', authProfile?.avatar_url || null) || "/placeholder-user.jpg"} 
               alt={authProfile?.username || user?.email || "User"} 
             />
             <AvatarFallback>{authProfile?.username?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'მ'}</AvatarFallback>
@@ -944,7 +960,7 @@ function MobileSidebarContent({
       ) : (
         <div className="flex items-center gap-3 p-3 mb-5 rounded-xl bg-white/5 backdrop-blur-md border border-white/5">
           <Avatar className="h-10 w-10 ring-2 ring-white/10">
-            <AvatarImage src="https://api.dicebear.com/7.x/pixel-art/svg?seed=guest" alt="სტუმარი" />
+            <AvatarImage src="/placeholder-user.jpg" alt="სტუმარი" />
             <AvatarFallback>ს</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
@@ -979,34 +995,7 @@ function MobileSidebarContent({
               <Search className="h-5 w-5 mr-3 stroke-[1.5px]" />
               <span>ძიება</span>
             </button>
-            <Link 
-              href="/manga" 
-              className={cn(
-                "flex items-center px-3 py-3 rounded-xl transition-colors",
-                pathname === "/manga" 
-                  ? "bg-white/10 text-white relative" 
-                  : "text-white/70 hover:text-white hover:bg-white/5"
-              )}
-              onClick={onClose}
-            >
-              {pathname === "/manga" && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[hsl(var(--primary))] rounded-r-full" />}
-              <BookOpen className={cn("h-5 w-5 mr-3 stroke-[1.5px]", pathname === "/manga" && "text-[hsl(var(--primary))]")} />
-              <span>კითხვა</span>
-            </Link>
-            <Link 
-              href="/comics" 
-              className={cn(
-                "flex items-center px-3 py-3 rounded-xl transition-colors",
-                pathname === "/comics" 
-                  ? "bg-white/10 text-white relative" 
-                  : "text-white/70 hover:text-white hover:bg-white/5"
-              )}
-              onClick={onClose}
-            >
-              {pathname === "/comics" && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[hsl(var(--primary))] rounded-r-full" />}
-              <Book className={cn("h-5 w-5 mr-3 stroke-[1.5px]", pathname === "/comics" && "text-[hsl(var(--primary))]")} />
-              <span>კომიქსები</span>
-            </Link>
+            {/* Remove manga and comics links */}
           </div>
         </div>
         

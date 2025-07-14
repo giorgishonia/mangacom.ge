@@ -50,6 +50,8 @@ export interface Suggestion {
   created_at: string;
   vote_count: number;
   has_voted: boolean;
+  downvote_count: number;
+  has_downvoted: boolean;
   user: UserProfile;
 }
 
@@ -162,6 +164,24 @@ export async function getAllSuggestions(userId?: string): Promise<Suggestion[]> 
       }
     }
 
+    // After fetching suggestions
+    // Assume suggestions has downvote_count in select('*')
+    // For has_downvoted
+    let downvotedSuggestionIds: string[] = [];
+    if (userId) {
+      const { error: tableCheckError } = await supabase.from('downvotes').select('id').limit(1);
+      if (tableCheckError && tableCheckError.code === '42P01') {
+        console.log('Downvotes table does not exist - demo mode');
+      } else {
+        const { data: downvotes, error: downvotesError } = await supabase.from('downvotes').select('suggestion_id').eq('user_id', userId);
+        if (downvotesError) {
+          if (Object.keys(downvotesError).length > 0) console.error('Error fetching downvoted suggestions:', downvotesError);
+        } else {
+          downvotedSuggestionIds = downvotes?.map(downvote => downvote.suggestion_id) || [];
+        }
+      }
+    }
+
     // Format the suggestions with vote information
     return suggestions.map(suggestion => ({
       id: suggestion.id,
@@ -172,6 +192,8 @@ export async function getAllSuggestions(userId?: string): Promise<Suggestion[]> 
       created_at: suggestion.created_at,
       vote_count: suggestion.vote_count || 0,
       has_voted: votedSuggestionIds.includes(suggestion.id),
+      downvote_count: suggestion.downvote_count || 0,
+      has_downvoted: downvotedSuggestionIds.includes(suggestion.id),
       user: userProfiles[suggestion.user_id] || {
         id: suggestion.user_id,
         name: 'უცნობი მომხმარებელი',
@@ -297,7 +319,8 @@ export async function addSuggestion(newSuggestion: NewSuggestion): Promise<{ suc
         description: newSuggestion.description,
         type: newSuggestion.type,
         user_id: newSuggestion.userId,
-        vote_count: 0
+        vote_count: 0,
+        downvote_count: 0
       });
 
     if (error) {
@@ -317,6 +340,13 @@ export async function toggleVote(suggestionId: string, userId: string): Promise<
   const supabase = createClient();
 
   try {
+    // First check if the votes table exists
+    const { error: tableCheckError } = await supabase.from('votes').select('id').limit(1);
+    if (tableCheckError && tableCheckError.code === '42P01') {
+      console.log('Votes table does not exist - demo mode');
+      return { success: true, added: true }; // Return success in demo mode
+    }
+
     // Check if vote already exists
     const { data: existingVote, error: checkError } = await supabase
       .from('votes')
@@ -402,6 +432,103 @@ export async function toggleVote(suggestionId: string, userId: string): Promise<
   }
 }
 
+// Add toggleDownvote
+export async function toggleDownvote(suggestionId: string, userId: string): Promise<{ success: boolean; error?: string; added?: boolean }> {
+  const supabase = createClient();
+
+  try {
+    // First check if the downvotes table exists
+    const { error: tableCheckError } = await supabase.from('downvotes').select('id').limit(1);
+    if (tableCheckError && tableCheckError.code === '42P01') {
+      console.log('Downvotes table does not exist - demo mode');
+      return { success: true, added: true }; // Return success in demo mode
+    }
+
+    // Check if downvote already exists
+    const { data: existingDownvote, error: checkError } = await supabase
+      .from('downvotes')
+      .select('id')
+      .eq('suggestion_id', suggestionId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking downvote:', checkError);
+      return { success: false, error: checkError.message };
+    }
+
+    // First, get the current downvote count
+    const { data: suggestion, error: suggestionError } = await supabase
+      .from('suggestions')
+      .select('downvote_count')
+      .eq('id', suggestionId)
+      .single();
+      
+    if (suggestionError) {
+      console.error('Error getting suggestion:', suggestionError);
+      return { success: false, error: suggestionError.message };
+    }
+    
+    const currentCount = suggestion?.downvote_count || 0;
+
+    if (existingDownvote) {
+      // Remove downvote
+      const { error: deleteError } = await supabase
+        .from('downvotes')
+        .delete()
+        .eq('id', existingDownvote.id);
+
+      if (deleteError) {
+        console.error('Error removing downvote:', deleteError);
+        return { success: false, error: deleteError.message };
+    }
+
+      // Decrement downvote count directly
+      const { error: updateError } = await supabase
+        .from('suggestions')
+        .update({ downvote_count: Math.max(0, currentCount - 1) })
+        .eq('id', suggestionId);
+
+      if (updateError) {
+        console.error('Error decrementing downvote count:', updateError);
+        return { success: false, error: updateError.message };
+      }
+
+      return { success: true, added: false };
+    } else {
+      // Add downvote
+      const { error: insertError } = await supabase
+        .from('downvotes')
+        .insert({
+          id: uuidv4(),
+          suggestion_id: suggestionId,
+          user_id: userId
+        });
+
+      if (insertError) {
+        console.error('Error adding downvote:', insertError);
+        return { success: false, error: insertError.message };
+      }
+
+      // Increment downvote count directly
+      const { error: updateError } = await supabase
+        .from('suggestions')
+        .update({ downvote_count: currentCount + 1 })
+        .eq('id', suggestionId);
+
+      if (updateError) {
+        console.error('Error incrementing downvote count:', updateError);
+        return { success: false, error: updateError.message };
+      }
+
+      return { success: true, added: true };
+    }
+  } catch (error) {
+    console.error('Error in toggleDownvote:', error);
+    return { success: false, error: 'Failed to process downvote' };
+  }
+}
+
 // Get comments for a suggestion
 export async function getCommentsBySuggestionId(suggestionId: string): Promise<SuggestionComment[]> {
   const supabase = createClient();
@@ -452,6 +579,13 @@ export async function addComment(newComment: NewComment): Promise<{ success: boo
   const supabase = createClient();
 
   try {
+    // First check if the comments table exists
+    const { error: tableCheckError } = await supabase.from('comments').select('id').limit(1);
+    if (tableCheckError && tableCheckError.code === '42P01') {
+      console.log('Comments table does not exist - demo mode');
+      return { success: true, id: uuidv4() }; // Return success in demo mode
+    }
+
     const { error } = await supabase
       .from('comments')
       .insert({
@@ -495,26 +629,46 @@ export async function deleteSuggestion(id: string, userId: string): Promise<{ su
     return { success: false, error: 'Not authorized' };
   }
   
-  // Delete all votes for this suggestion
-  const { error: votesError } = await supabase
-    .from('votes')
-    .delete()
-    .eq('suggestion_id', id);
+  // Delete all votes for this suggestion (if table exists)
+  const { error: votesTableCheck } = await supabase.from('votes').select('id').limit(1);
+  if (!votesTableCheck || votesTableCheck.code !== '42P01') {
+    const { error: votesError } = await supabase
+      .from('votes')
+      .delete()
+      .eq('suggestion_id', id);
 
-  if (votesError) {
-    console.error('Error deleting votes:', votesError);
-    // Continue with deletion even if votes deletion fails
+    if (votesError) {
+      console.error('Error deleting votes:', votesError);
+      // Continue with deletion even if votes deletion fails
+    }
   }
 
-  // Delete all comments for this suggestion
-  const { error: commentsError } = await supabase
-    .from('comments')
-    .delete()
-    .eq('suggestion_id', id);
+  // Delete all downvotes for this suggestion (if table exists)
+  const { error: downvotesTableCheck } = await supabase.from('downvotes').select('id').limit(1);
+  if (!downvotesTableCheck || downvotesTableCheck.code !== '42P01') {
+    const { error: downvotesError } = await supabase
+      .from('downvotes')
+      .delete()
+      .eq('suggestion_id', id);
 
-  if (commentsError) {
-    console.error('Error deleting comments:', commentsError);
-    // Continue with deletion even if comments deletion fails
+    if (downvotesError) {
+      console.error('Error deleting downvotes:', downvotesError);
+      // Continue with deletion even if downvotes deletion fails
+    }
+  }
+
+  // Delete all comments for this suggestion (if table exists)
+  const { error: commentsTableCheck } = await supabase.from('comments').select('id').limit(1);
+  if (!commentsTableCheck || commentsTableCheck.code !== '42P01') {
+    const { error: commentsError } = await supabase
+      .from('comments')
+      .delete()
+      .eq('suggestion_id', id);
+
+    if (commentsError) {
+      console.error('Error deleting comments:', commentsError);
+      // Continue with deletion even if comments deletion fails
+    }
   }
 
   // Delete the suggestion
@@ -535,6 +689,13 @@ export async function deleteComment(commentId: string, userId: string): Promise<
   const supabase = createClient();
 
   try {
+    // First check if the comments table exists
+    const { error: tableCheckError } = await supabase.from('comments').select('id').limit(1);
+    if (tableCheckError && tableCheckError.code === '42P01') {
+      console.log('Comments table does not exist - demo mode');
+      return { success: true }; // Return success in demo mode
+    }
+
     // First check if the user is the owner of the comment
     const { data: comment, error: fetchError } = await supabase
       .from('comments')

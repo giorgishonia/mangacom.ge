@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, HTMLMotionProps } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface GlassCardProps extends HTMLMotionProps<"div"> {
   children: React.ReactNode;
   className?: string;
   intensity?: number; // Controls the intensity of the light effect (0-1)

@@ -32,6 +32,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { createContent, updateContent } from "@/lib/content";
 import { cn } from "@/lib/utils";
 import { getMangaById, searchAniList } from "@/lib/anilist";
+import { Switch } from "@/components/ui/switch";
 
 // ჟანრების სიის განსაზღვრა
 const genreOptions = [
@@ -92,6 +93,8 @@ const contentFormSchema = z.object({
       gender: z.string().optional(),
     })
   ).optional(),
+  hasEnglish: z.boolean().optional(),
+  mangadexId: z.string().optional(),
 });
 
 type ContentFormValues = z.infer<typeof contentFormSchema>;
@@ -249,6 +252,8 @@ export default function ContentForm({
     rating: processedInitialData.rating || undefined,
     publisher: processedInitialData.publisher || "",
     characters: processedInitialData.characters || [],
+    hasEnglish: processedInitialData?.hasEnglish ?? false,
+    mangadexId: processedInitialData?.mangadexId || processedInitialData?.mangadex_id || "",
   } : {
     title: "",
     georgianTitle: "",
@@ -266,6 +271,8 @@ export default function ContentForm({
     rating: undefined,
     publisher: "",
     characters: [],
+    hasEnglish: false,
+    mangadexId: "",
   };
 
   // Log what characters we're initializing with
@@ -436,6 +443,16 @@ export default function ContentForm({
       const characters = data.characters || [];
       if (characters.length > 0) {
         contentData.characters = characters;
+      }
+      
+      // Process English support
+      if (data.hasEnglish !== undefined) {
+        contentData.has_english = data.hasEnglish;
+      }
+
+      // Process MangaDex ID
+      if (data.mangadexId) {
+        contentData.mangadex_id = data.mangadexId;
       }
       
       console.log("Final content data:", contentData);
@@ -1157,6 +1174,40 @@ export default function ContentForm({
               </FormItem>
             )}
           />
+
+          {/* English Language Support */}
+          <div className="mt-6">
+            <FormField
+              control={form.control}
+              name="hasEnglish"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center space-x-2">
+                    <FormLabel>Enable English Chapters</FormLabel>
+                    <Switch checked={field.value ?? false} onCheckedChange={field.onChange} />
+                  </div>
+                  <FormDescription>
+                    Toggle to enable MangaDex English chapter integration for this content.
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+            {form.watch('hasEnglish') && (
+              <FormField
+                control={form.control}
+                name="mangadexId"
+                render={({ field }) => (
+                  <FormItem className="mt-4">
+                    <FormLabel>MangaDex ID</FormLabel>
+                    <Input placeholder="Enter MangaDex ID" {...field} />
+                    <FormDescription>
+                      Example: a1b2c3d4-e5f6-7890-abcd-ef0123456789
+                    </FormDescription>
+                  </FormItem>
+                )}
+              />
+            )}
+          </div>
 
           <div className="flex justify-end space-x-2">
             <Button 

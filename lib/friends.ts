@@ -78,7 +78,36 @@ export async function sendFriendRequest(
 
   // Insert pending request
   const { error } = await supabaseSrv.from('friends').insert({ user_id: requesterId, friend_id: targetId })
-  if (error) return { success: false, error: error.message }
+  if (error) {
+    if (error.code === '23505') {
+      // Possible race condition - recheck for existing
+      const { data: existingAfter, error: existAfterErr } = await supabase
+        .from('friends')
+        .select('status, user_id, friend_id')
+        .or(`and(user_id.eq.${requesterId},friend_id.eq.${targetId}),and(user_id.eq.${targetId},friend_id.eq.${requesterId})`)
+        .maybeSingle()
+      if (existAfterErr) return { success: false, error: existAfterErr.message }
+      if (existingAfter && existingAfter.status === 'pending' && existingAfter.user_id === targetId && existingAfter.friend_id === requesterId) {
+        // Auto-accept the reverse request
+        const { error: updErr } = await supabaseSrv
+          .from('friends')
+          .update({ status: 'accepted' })
+          .eq('user_id', targetId)
+          .eq('friend_id', requesterId)
+        if (updErr) return { success: false, error: updErr.message }
+        // Notify both users
+        let senderName = requesterUsername
+        if (!senderName) {
+          senderName = await fetchUsername(requesterId)
+        }
+        const targetUsername = await fetchUsername(targetId)
+        await createNotification(targetId, 'friend_accept', { sender_user_id: requesterId, sender_username: senderName || undefined })
+        await createNotification(requesterId, 'friend_accept', { sender_user_id: targetId, sender_username: targetUsername || undefined })
+        return { success: true }
+      }
+    }
+    return { success: false, error: error.message }
+  }
 
   // Ensure we have sender username for notification
   let senderName = requesterUsername

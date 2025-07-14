@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -71,6 +71,7 @@ import { supabase } from '@/lib/supabase' // Import Supabase client for RPC call
 import { VipPromoBanner } from "@/components/ads/vip-promo-banner";
 import { v4 as uuidv4 } from 'uuid'
 import { LogoLoader } from '@/components/logo-loader'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // Animation variants
 const pageVariants = {
@@ -116,6 +117,9 @@ const formatSafeDate = (dateString: string | undefined) => {
 
 type Emoji = typeof EMOJI_REACTIONS[number]['emoji']; // Define Emoji type
 
+// Toggle to enable verbose debug logs for this page only
+const DEV_LOG = true;
+
 export default function MangaPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -137,7 +141,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
   const [isSubscribed, setIsSubscribed] = useState(false)
   const [isSubProcessing, setIsSubProcessing] = useState(false)
   const { userId, isAuthenticated } = useUnifiedAuth()
-  const { user } = useAuth(); // Get user from Supabase auth for admin check
+  const { user, profile } = useAuth(); // Get user & profile from Supabase auth for language selection & admin check
   const [isAdmin, setIsAdmin] = useState(false); // State for admin status in page
   const [isAdminCheckComplete, setIsAdminCheckComplete] = useState(false); // Track completion
   const [overlayOpacity, setOverlayOpacity] = useState(20);
@@ -152,6 +156,129 @@ export default function MangaPage({ params }: { params: { id: string } }) {
 
   // --- Character favorites ---
   const [favoriteCharacters, setFavoriteCharacters] = useState<{ [id: string]: boolean }>({});
+
+  // Language state
+  const [selectedLanguage, setSelectedLanguage] = useState<'ge' | 'en'>('ge');
+
+  // --- Lazy English chapters pagination ---
+  const [englishOffset, setEnglishOffset] = useState(0);
+  const [englishHasMore, setEnglishHasMore] = useState(true);
+  const englishFetchingRef = useRef(false);
+  const englishListRef = useRef<HTMLDivElement>(null);
+  const [englishLoading, setEnglishLoading] = useState(false);
+  const [englishFullLoading, setEnglishFullLoading] = useState(false);
+  // Tracks how many consecutive API pages returned *no new* unique English chapters
+  const englishDuplicateSkipsRef = useRef(0);
+
+  const EN_PAGE_SIZE = 20;
+
+  const loadEnglishChapters = useCallback(async () => {
+    if (englishFetchingRef.current || !englishHasMore) {
+      if (DEV_LOG) console.log('loadEnglishChapters: skipping load -', { fetching: englishFetchingRef.current, hasMore: englishHasMore });
+      return;
+    }
+    if (!mangaId) return;
+    
+    if (DEV_LOG) console.log('loadEnglishChapters: starting load with offset', englishOffset);
+    englishFetchingRef.current = true;
+    setEnglishLoading(true);
+    
+    try {
+      const result = await getChapters(mangaId, {
+        includeEnglish: true,
+        limitEnglish: EN_PAGE_SIZE,
+        offsetEnglish: englishOffset,
+        includeGeorgian: false,
+      });
+
+      if (result.success) {
+        const newEnglish = (result.chapters || []).filter((c: any) => c.language === 'en');
+        if (DEV_LOG) console.log('loadEnglishChapters: received', newEnglish.length, 'new English chapters');
+
+        setMangaData((prev: any) => {
+          if (!prev) return prev;
+          const existing = prev.chaptersData || [];
+          const merged = [...existing, ...newEnglish];
+          const deduped = Array.from(
+            new Map(merged.map((ch: any) => [`${ch.language}-${ch.number}`, ch])).values()
+          );
+          if (DEV_LOG) console.log('loadEnglishChapters: total chapters after merge', deduped.length);
+          return { ...prev, chaptersData: deduped };
+        });
+
+        if (newEnglish.length === 0) {
+          // Received a page but all chapters were duplicates we've already cached.
+          // Increment the skip counter – after a few consecutive duplicates we assume we've reached the end.
+          englishDuplicateSkipsRef.current += 1;
+
+          if (DEV_LOG) console.log('loadEnglishChapters: duplicate page (no unique chapters). Skip count =', englishDuplicateSkipsRef.current);
+
+          const MAX_DUPLICATE_SKIPS = 4; // allow 4×20 = 80 duplicate rows before giving up
+
+          if (englishDuplicateSkipsRef.current >= MAX_DUPLICATE_SKIPS) {
+            if (DEV_LOG) console.log('loadEnglishChapters: hit duplicate skip threshold – stopping pagination');
+            setEnglishHasMore(false);
+          } else {
+            // Still assume there could be more further ahead – advance the offset & try again next scroll
+            setEnglishOffset((off) => off + EN_PAGE_SIZE);
+          }
+        } else {
+          // Got unique chapters → reset duplicate skip counter and continue
+          englishDuplicateSkipsRef.current = 0;
+
+          setEnglishOffset((off) => {
+            const newOffset = off + EN_PAGE_SIZE;
+            if (DEV_LOG) console.log('loadEnglishChapters: advancing offset to', newOffset);
+            return newOffset;
+          });
+        }
+      } else {
+        console.error('loadEnglishChapters: API call failed', result);
+        setEnglishHasMore(false);
+      }
+    } catch (err) {
+      console.error('Failed to load English chapters:', err);
+      setEnglishHasMore(false);
+    } finally {
+      englishFetchingRef.current = false;
+      setEnglishLoading(false);
+    }
+  }, [englishOffset, mangaId, englishHasMore]);
+
+  // Trigger first English fetch when user switches to EN tab
+  useEffect(() => {
+    if (selectedLanguage === 'en' && englishOffset === 0 && englishHasMore) {
+      loadEnglishChapters();
+    }
+  }, [selectedLanguage, englishOffset, englishHasMore, loadEnglishChapters]);
+
+  // Infinite scroll handler for English list
+  const handleEnglishScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const scrollThreshold = 50; // Reduced threshold for better responsiveness
+    
+    if (DEV_LOG) {
+      console.log('English scroll event:', {
+        scrollTop: target.scrollTop,
+        clientHeight: target.clientHeight,
+        scrollHeight: target.scrollHeight,
+        threshold: scrollThreshold,
+        shouldLoad: target.scrollTop + target.clientHeight >= target.scrollHeight - scrollThreshold
+      });
+    }
+    
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - scrollThreshold) {
+      if (DEV_LOG) console.log('English scroll triggered, loading more chapters...');
+      loadEnglishChapters();
+    }
+  }, [loadEnglishChapters]);
+
+  // Keep selectedLanguage in sync with user's profile preference
+  useEffect(() => {
+    if (profile?.preferred_language && (profile.preferred_language === 'ge' || profile.preferred_language === 'en')) {
+      setSelectedLanguage(profile.preferred_language);
+    }
+  }, [profile?.preferred_language]);
 
   // Load favorites from localStorage on mount
   useEffect(() => {
@@ -258,7 +385,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
       let fetchedMangaData: any = null;
 
       if (dbResult.success && dbResult.content && dbResult.content.type === 'manga') {
-        const chaptersResult = await getChapters(mangaId);
+        const chaptersResult = await getChapters(mangaId, { includeEnglish: false });
         const chapters = chaptersResult.success ? chaptersResult.chapters : [];
         fetchedMangaData = {
           ...formatDatabaseContent(dbResult.content),
@@ -299,7 +426,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
       incrementContentView(mangaId)
         .then(result => {
           if (result.success) {
-            console.log(`View count API called successfully for manga ${mangaId}`);
+            if (DEV_LOG) console.log(`View count API called successfully for manga ${mangaId}`);
           } else {
             console.error("Failed to increment view count for manga", mangaId, result.error);
           }
@@ -341,12 +468,12 @@ export default function MangaPage({ params }: { params: { id: string } }) {
 
   // Updated formatDatabaseContent function to remove volumes
   const formatDatabaseContent = (content: any) => {
-    console.log("Formatting database content:", content);
+    if (DEV_LOG) console.log("Formatting database content:", content);
 
     // --- DEBUG: Log raw image values ---
-    console.log(`[manga formatDB] Raw Banner: ${content.bannerImage}, Raw Thumb: ${content.thumbnail}`);
+    if (DEV_LOG) console.log(`[manga formatDB] Raw Banner: ${content.bannerImage}, Raw Thumb: ${content.thumbnail}`);
     const bannerToUse = (content.bannerImage && content.bannerImage.trim() !== '') ? content.bannerImage : content.thumbnail;
-    console.log(`[manga formatDB] Banner to use: ${bannerToUse}`);
+    if (DEV_LOG) console.log(`[manga formatDB] Banner to use: ${bannerToUse}`);
     // ---------------------------------
 
     // Extract release date details for logging
@@ -354,7 +481,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     const releaseMonth = content.release_month || null;
     const releaseDay = content.release_day || null;
     
-    console.log("Release date information:", { 
+    if (DEV_LOG) console.log("Release date information:", { 
       year: releaseYear, 
       month: releaseMonth, 
       day: releaseDay 
@@ -466,13 +593,17 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     }
   }
 
-  const handleReadClick = (chapterIndex = 0, resumeFromProgress = false, initialPageOverride?: number) => {
+  const handleReadClick = (chapterNumber: number, language: string, resumeFromProgress = false, initialPageOverride?: number) => {
     if (!processedData) return;
     
-    if (processedData.chapterList.length === 0) {
+    const chapterIndex = processedData.chapterList.findIndex(
+      ch => ch.number === chapterNumber && ch.language === language
+    );
+    
+    if (chapterIndex === -1) {
       toast({
-        title: "თავები არ არის",
-        description: "ამ მანგას ჯერ არ აქვს ხელმისაწვდომი თავები.",
+        title: "Chapter not found",
+        description: "Unable to locate the selected chapter.",
         duration: 3000,
       });
       return;
@@ -511,7 +642,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
   const formatChapters = (chaptersData: any[] = []) => {
     if (!chaptersData || chaptersData.length === 0) {
       // Create an empty chapters indicator that's compatible with the Chapter interface
-      console.log("No chapters available, returning empty state indicator");
+      if (DEV_LOG) console.log("No chapters available, returning empty state indicator");
       return [];
     }
     
@@ -519,114 +650,117 @@ export default function MangaPage({ params }: { params: { id: string } }) {
       id: chapter.id,
       number: chapter.number,
       title: chapter.title,
-      releaseDate: chapter.release_date ? new Date(chapter.release_date).toLocaleDateString() : "Unknown",
+      releaseDate: (chapter.release_date || chapter.created_at) ? new Date(chapter.release_date || chapter.created_at).toLocaleDateString() : "Unknown",
       thumbnail: chapter.thumbnail || mangaData.coverImage?.large || "/placeholder.svg",
-      pages: chapter.pages || ["/manga-page-placeholder.jpg"]
+      pages: chapter.pages || ["/manga-page-placeholder.jpg"],
+      language: chapter.language || 'ge',  // Add language field
+      external: chapter.external || false,
     }));
   };
 
   // Update the processedData to display actual chapter amounts and remove volumes
-  const processedData = mangaData ? {
-    id: mangaData.id,
-    title: mangaData.title?.english || mangaData.title?.romaji || "Unknown Title",
-    subtitle: mangaData.title?.native,
-    georgianTitle: isFromDatabase ? mangaData.georgian_title : null,
-    coverImage: mangaData.coverImage?.large || "/placeholder.svg",
-    bannerImage: mangaData.bannerImage || mangaData.coverImage?.large || "/placeholder.svg",
-    // Better release date formatting with fallback - only display year
-    releaseDate: mangaData.startDate && mangaData.startDate.year 
-      ? `${mangaData.startDate.year}`
-      : "Unknown",
-    status: formatStatus(mangaData.status || ""),
-    // Use actual chapter count if available, otherwise show chapter list length
-    chapters: mangaData.chaptersData?.length || mangaData.chapters || "?",
-    // Remove volumes info
-    rating: mangaData.averageScore ? Math.max(0, Math.min(10, mangaData.averageScore / 10)) : null,
-    popularity: mangaData.popularity || 0,
-    genres: mangaData.genres || [],
-    author: mangaData.staff?.edges?.find((staff: any) => 
-      staff.role?.toLowerCase().includes('author') || 
-      staff.role?.toLowerCase().includes('story')
-    )?.node?.name?.full || "Unknown Author",
-    synopsis: isFromDatabase ? mangaData.description : stripHtml(mangaData.description || "No description available"),
-    chapterList: formatChapters(mangaData.chaptersData),
-    // Fix the relations mapping to handle edge cases better
-    relations: mangaData.relations?.edges?.filter((edge: any) => edge?.node && edge?.node?.id)
-      .map((relation: any) => ({
-        id: relation.node.id,
-        title: relation.node.title?.english || relation.node.title?.romaji || "Unknown",
-        type: relation.relationType || "RELATED",
-        year: relation.node.startDate?.year || "Unknown",
-        image: relation.node.coverImage?.large || relation.node.coverImage?.medium || "/placeholder.svg",
-      })) || [],
-    // Fix the recommendations mapping to handle edge cases better
-    recommendations: mangaData.recommendations?.nodes?.filter((node: any) => node?.mediaRecommendation && node?.mediaRecommendation?.id)
-      .map((rec: any) => ({
-        id: rec.mediaRecommendation.id,
-        title: rec.mediaRecommendation.title?.english || rec.mediaRecommendation.title?.romaji || "Unknown",
-        year: rec.mediaRecommendation.startDate?.year || "Unknown",
-        image: rec.mediaRecommendation.coverImage?.large || rec.mediaRecommendation.coverImage?.medium || "/placeholder.svg",
-        genres: rec.mediaRecommendation.genres || [],
-      })) || [],
-    // Fix the characters mapping to ensure proper extraction
-    characters: mapCharacters(mangaData),
-    view_count: mangaData.view_count ?? 0, // Add view_count to processed data
-    logo: mangaData.logo || null,
-  } : null;
+  const processedData = useMemo(() => {
+    if (!mangaData) return null;
+    return {
+      id: mangaData.id,
+      title: mangaData.title?.english || mangaData.title?.romaji || "Unknown Title",
+      subtitle: mangaData.title?.native,
+      georgianTitle: isFromDatabase ? mangaData.georgian_title : null,
+      coverImage: mangaData.coverImage?.large || "/placeholder.svg",
+      bannerImage: mangaData.bannerImage || mangaData.coverImage?.large || "/placeholder.svg",
+      // Better release date formatting with fallback - only display year
+      releaseDate: mangaData.startDate && mangaData.startDate.year 
+        ? `${mangaData.startDate.year}`
+        : "Unknown",
+      status: formatStatus(mangaData.status || ""),
+      // Use actual chapter count if available, otherwise show chapter list length
+      chapters: mangaData.chaptersData?.length || mangaData.chapters || "?",
+      // Remove volumes info
+      rating: mangaData.averageScore ? Math.max(0, Math.min(10, mangaData.averageScore / 10)) : null,
+      popularity: mangaData.popularity || 0,
+      genres: mangaData.genres || [],
+      author: mangaData.staff?.edges?.find((staff: any) => 
+        staff.role?.toLowerCase().includes('author') || 
+        staff.role?.toLowerCase().includes('story')
+      )?.node?.name?.full || "Unknown Author",
+      synopsis: isFromDatabase ? mangaData.description : stripHtml(mangaData.description || "No description available"),
+      chapterList: formatChapters(mangaData.chaptersData),
+      // Fix the relations mapping to handle edge cases better
+      relations: mangaData.relations?.edges?.filter((edge: any) => edge?.node && edge?.node?.id)
+        .map((relation: any) => ({
+          id: relation.node.id,
+          title: relation.node.title?.english || relation.node.title?.romaji || "Unknown",
+          type: relation.relationType || "RELATED",
+          year: relation.node.startDate?.year || "Unknown",
+          image: relation.node.coverImage?.large || relation.node.coverImage?.medium || "/placeholder.svg",
+        })) || [],
+      // Fix the recommendations mapping to handle edge cases better
+      recommendations: mangaData.recommendations?.nodes?.filter((node: any) => node?.mediaRecommendation && node?.mediaRecommendation?.id)
+        .map((rec: any) => ({
+          id: rec.mediaRecommendation.id,
+          title: rec.mediaRecommendation.title?.english || rec.mediaRecommendation.title?.romaji || "Unknown",
+          year: rec.mediaRecommendation.startDate?.year || "Unknown",
+          image: rec.mediaRecommendation.coverImage?.large || rec.mediaRecommendation.coverImage?.medium || "/placeholder.svg",
+          genres: rec.mediaRecommendation.genres || [],
+        })) || [],
+      // Fix the characters mapping to ensure proper extraction
+      characters: mapCharacters(mangaData),
+      view_count: mangaData.view_count ?? 0, // Add view_count to processed data
+      logo: mangaData.logo || null,
+    };
+  }, [mangaData, isFromDatabase]);
 
   // Add a debug log for the processed data
-  if (processedData) {
-    console.log("Final processed data:", {
-      dataAvailable: !!processedData,
-      hasCharacters: !!processedData.characters,
-      characterCount: processedData.characters?.length || 0,
-      charactersSample: processedData.characters?.slice(0, 2) || []
-    });
-  }
+  if (DEV_LOG) console.log("Final processed data:", {
+    dataAvailable: !!processedData,
+    hasCharacters: !!processedData?.characters,
+    characterCount: processedData?.characters?.length || 0,
+    charactersSample: processedData?.characters?.slice(0, 2) || []
+  });
 
   // Add this useEffect for debug logging
   useEffect(() => {
     if (processedData) {
-      if (!processedData.relations || processedData.relations.length === 0) {
-        console.log("No relations data to display");
+      if (DEV_LOG) {
+        if (!processedData.relations || processedData.relations.length === 0) {
+          console.log("No relations data to display");
+        }
+        if (!processedData.recommendations || processedData.recommendations.length === 0) {
+          console.log("No recommendations data to display");
+        }
       }
-      if (!processedData.recommendations || processedData.recommendations.length === 0) {
-        console.log("No recommendations data to display");
+      if (DEV_LOG) {
+        // Debug logging for character data
+        if (DEV_LOG) console.log("Character data available:", !!mangaData?.characters);
+        
+        if (mangaData?.characters) {
+          console.log("Raw character data from API:", {
+            nodes: mangaData.characters.nodes?.length || 0,
+            edges: mangaData.characters.edges?.length || 0,
+            sample: mangaData.characters.nodes?.[0] || 'No characters'
+          });
+        }
+        
+        if (processedData && processedData.characters) {
+          console.log("Processed character data:", {
+            count: processedData.characters.length,
+            sample: processedData.characters[0] || 'No processed characters'
+          });
+        }
       }
     }
   }, [processedData]);
 
-  // Add a debug effect to specifically log character data
-  useEffect(() => {
-    // Debug logging for character data
-    console.log("Character data available:", !!mangaData?.characters);
-    
-    if (mangaData?.characters) {
-      console.log("Raw character data from API:", {
-        nodes: mangaData.characters.nodes?.length || 0,
-        edges: mangaData.characters.edges?.length || 0,
-        sample: mangaData.characters.nodes?.[0] || 'No characters'
-      });
-    }
-    
-    if (processedData && processedData.characters) {
-      console.log("Processed character data:", {
-        count: processedData.characters.length,
-        sample: processedData.characters[0] || 'No processed characters'
-      });
-    }
-  }, [mangaData, processedData]);
-
   function mapCharacters(data: any) {
     if (!data) {
-      console.log('No data provided for character mapping');
+      if (DEV_LOG) console.log('No data provided for character mapping');
       return [];
     }
     
     try {
       // Check if characters data exists in any expected format
       if (!data.characters) {
-        console.log('No characters property in data');
+        if (DEV_LOG) console.log('No characters property in data');
         
         // WORKAROUND: Try to extract character data from alternative_titles
         if (data.alternative_titles && Array.isArray(data.alternative_titles)) {
@@ -635,12 +769,12 @@ export default function MangaPage({ params }: { params: { id: string } }) {
           );
           
           if (characterEntries.length > 0) {
-            console.log(`Found ${characterEntries.length} characters in alternative_titles`);
+            if (DEV_LOG) console.log(`Found ${characterEntries.length} characters in alternative_titles`);
             const extractedCharacters = characterEntries.map((entry: string) => {
               // Extract the JSON part after "character:"
               const jsonStr = entry.substring(10); // 'character:'.length = 10
               const charData = JSON.parse(jsonStr);
-              console.log('Extracted character:', charData);
+              if (DEV_LOG) console.log('Extracted character:', charData);
               return {
                 id: charData.id || `char-${Math.random().toString(36).substring(2, 9)}`,
                 name: charData.name || 'Unknown',
@@ -651,7 +785,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                 voiceActor: null
               };
             });
-            console.log(`Successfully extracted ${extractedCharacters.length} characters`);
+            if (DEV_LOG) console.log(`Successfully extracted ${extractedCharacters.length} characters`);
             return extractedCharacters;
           }
         }
@@ -659,7 +793,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
         return [];
       }
       
-      console.log('Character data structure:', {
+      if (DEV_LOG) console.log('Character data structure:', {
         hasCharacters: !!data.characters,
         hasEdges: !!data.characters.edges,
         edgeCount: data.characters.edges?.length || 0,
@@ -669,7 +803,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
 
       // Similar to anime page: Map nodes with roles from edges
       if (data.characters.nodes && data.characters.nodes.length > 0) {
-        console.log('Mapping characters from nodes with roles from edges');
+        if (DEV_LOG) console.log('Mapping characters from nodes with roles from edges');
         
         const mappedChars = data.characters.nodes
           .filter((node: any) => node?.id && node?.name)
@@ -690,13 +824,13 @@ export default function MangaPage({ params }: { params: { id: string } }) {
             };
           });
         
-        console.log(`Mapped ${mappedChars.length} characters from nodes with roles`);
+        if (DEV_LOG) console.log(`Mapped ${mappedChars.length} characters from nodes with roles`);
         return mappedChars;
       }
       
       // Fallback to edges if nodes aren't available
       if (data.characters.edges && data.characters.edges.length > 0) {
-        console.log('Mapping characters from edges data');
+        if (DEV_LOG) console.log('Mapping characters from edges data');
         
         const mappedChars = data.characters.edges
           .filter((char: any) => char && char.node)
@@ -713,13 +847,13 @@ export default function MangaPage({ params }: { params: { id: string } }) {
             };
           });
         
-        console.log(`Mapped ${mappedChars.length} characters from edges`);
+        if (DEV_LOG) console.log(`Mapped ${mappedChars.length} characters from edges`);
         return mappedChars;
       }
       
       // Last resort - handle array of character objects (database format)
       if (Array.isArray(data.characters)) {
-        console.log('Mapping characters from array data (database format)');
+        if (DEV_LOG) console.log('Mapping characters from array data (database format)');
         
         const mappedChars = data.characters
           .filter((char: any) => char)
@@ -735,11 +869,11 @@ export default function MangaPage({ params }: { params: { id: string } }) {
             };
           });
         
-        console.log(`Mapped ${mappedChars.length} characters from array`);
+        if (DEV_LOG) console.log(`Mapped ${mappedChars.length} characters from array`);
         return mappedChars;
       }
       
-      console.log('No usable character data found in any expected format');
+      if (DEV_LOG) console.log('No usable character data found in any expected format');
       return [];
     } catch (err) {
       console.error('Error mapping characters:', err);
@@ -757,17 +891,18 @@ export default function MangaPage({ params }: { params: { id: string } }) {
       const startPage = pageParam ? parseInt(pageParam, 10) : 0;
       
       if (shouldResume && readingProgress) {
-        // Find chapter index that matches the stored reading progress
+        const chapterNumber = readingProgress.chapterNumber;
+        // Assume language 'ge' for resume, or add language to readingProgress if needed
+        const language = 'ge'; // TODO: Store language in reading progress if supporting EN progress
+        
         const chapterIndex = processedData.chapterList.findIndex(
-          (ch: any) => ch.id === readingProgress.chapterId || 
-                       ch.number === readingProgress.chapterNumber
+          ch => ch.number === chapterNumber && ch.language === language
         );
         
         if (chapterIndex !== -1) {
-          // Open reader at the correct chapter & page
           const initialPage = startPage || readingProgress.currentPage;
-          handleReadClick(chapterIndex, true, initialPage);
-          setResumeHandled(true); // Prevent re-opening after reader is closed
+          handleReadClick(chapterNumber, language, true, initialPage);
+          setResumeHandled(true);
         }
       }
     }
@@ -1018,6 +1153,29 @@ export default function MangaPage({ params }: { params: { id: string } }) {
   };
   const characterColumns = getCharacterColumns(charactersToShow.length);
 
+  const geChapters = processedData
+    ? [...processedData.chapterList.filter(c => c.language === 'ge')].sort((a,b) => a.number - b.number)
+    : [];
+
+  const enChapters = processedData
+    ? [...processedData.chapterList.filter(c => c.language === 'en')].sort((a,b) => a.number - b.number)
+    : [];
+    
+  // Debug log for English chapters
+  if (DEV_LOG && selectedLanguage === 'en') {
+    console.log('English chapters state:', {
+      totalChapters: processedData?.chapterList?.length || 0,
+      enChapters: enChapters.length,
+      englishOffset,
+      englishHasMore,
+      englishLoading,
+      englishFetching: englishFetchingRef.current
+    });
+  }
+
+  const filteredChapters = selectedLanguage === 'ge' ? geChapters : enChapters;
+  const hasEnSupport = englishHasMore || enChapters.length > 0;
+
   return (
     <div className="flex min-h-screen bg-[#070707] text-white antialiased">
 
@@ -1047,7 +1205,8 @@ export default function MangaPage({ params }: { params: { id: string } }) {
               transition={{ duration: 0.8 }}
             >
               {/* --- DEBUG LOG --- */}
-              {(() => { console.log("[app/manga/[id]] Rendering Banner. processedData.bannerImage:", processedData?.bannerImage); return null; })()}
+              {/* Banner debug log removed */}
+
               {/* Background image - higher quality with better cropping */}
               <div
                 className="absolute inset-0 bg-auto bg-top"
@@ -1280,7 +1439,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                             (ch: any) => ch.id === readingProgress.chapterId ||
                                          ch.number === readingProgress.chapterNumber
                           );
-                          handleReadClick(chapterIndex !== -1 ? chapterIndex : 0, true, readingProgress.currentPage);
+                          handleReadClick(chapterIndex !== -1 ? chapterIndex : 0, 'ge', true, readingProgress.currentPage);
                         }}
                         whileHover={{ scale: 1.03 }}
                         whileTap={{ scale: 0.97 }}
@@ -1294,7 +1453,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                     ) : (
                       <motion.button
                         className="w-full md:w-auto px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg flex items-center justify-center md:justify-start gap-2 shadow-lg shadow-purple-900/20 font-medium"
-                        onClick={() => handleReadClick(0)}
+                        onClick={() => handleReadClick(0, 'ge')}
                         whileHover={{ scale: 1.03 }}
                         whileTap={{ scale: 0.97 }}
                       >
@@ -1485,7 +1644,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                                   return (
                                     <div 
                                       key={`chapter-dropdown-${index}`}
-                                      onClick={() => handleReadClick(index)}
+                                      onClick={() => handleReadClick(chapter.number, chapter.language)}
                                       className={cn(
                                         "flex items-center p-2 hover:bg-purple-900/20 rounded cursor-pointer transition-colors mx-2",
                                         isCurrentlyReading && "bg-purple-900/20 text-purple-300"
@@ -1535,83 +1694,197 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                       </div>
                       
                       {/* Responsive chapter list - SCROLLABLE CONTAINER */}
-                      {processedData.chapterList.length === 0 ? (
-                        <div className="text-center py-12 border border-dashed border-white/10 rounded-lg bg-black/20 backdrop-blur-sm">
-                          <p className="text-white/70 text-lg">თავები ჯერ არ არის ხელმისაწვდომი.</p>
-                          <img src="/images/mascot/no-chapters.png" alt="No chapters mascot" className="mx-auto mt-4 w-32 h-32" />
-                        </div>
-                      ) : (
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                          {processedData?.chapterList?.map((chapter: any, index: number) => {
-                            const chapterId = chapter.id || `chapter-${chapter.number}`;
-                            const readPercentage = getReadPercentage(mangaId, chapterId);
-                            const isCurrentlyReading = readingProgress?.chapterId === chapterId || readingProgress?.chapterNumber === chapter.number;
-                            
-                            return (
-                              <motion.div
-                                key={`chapter-${index}`}
-                                onClick={() => handleReadClick(index)} // Make entire div clickable
-                                className={cn(
-                                  "flex items-center justify-between bg-black/40 backdrop-blur-sm border border-white/10 rounded-lg overflow-hidden transition-all duration-200",
-                                  "hover:bg-purple-600/20 hover:border-purple-500/40 cursor-pointer group" // Enhanced hover, added group for potential inner element styling on hover
-                                )}
-                                whileHover={{ scale: 1.02, y: -2 }} // Slightly more noticeable hover scale
-                                whileTap={{ scale: 0.99 }}
-                              >
-                                <div className="flex items-center flex-1 p-3 md:p-4">
-                                  <div className={cn(
-                                    "h-10 w-10 md:h-12 md:w-12 rounded-lg flex items-center justify-center text-lg mr-3 md:mr-4 flex-shrink-0 font-semibold transition-colors duration-200", // Larger, rounded-lg, font-semibold
-                                    isCurrentlyReading 
-                                      ? "bg-purple-600 text-white ring-2 ring-purple-400/50 group-hover:bg-purple-500"
-                                      : readPercentage === 100
-                                        ? "bg-green-600 text-white group-hover:bg-green-500"
-                                        : readPercentage > 0
-                                          ? "bg-sky-600 text-white group-hover:bg-sky-500" // Different color for in-progress
-                                          : "bg-gray-700 group-hover:bg-gray-600 text-gray-300"
-                                  )}>
-                                    {chapter.number} {/* Display chapter number directly */}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <h3 className="font-medium text-sm md:text-base truncate group-hover:text-purple-300 transition-colors duration-200">
-                                      {chapter.title} {/* Removed "Chapter {chapter.number}:" as number is prominent now */}
-                                    </h3>
-                                    
-                                    <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
-                                      <CalendarDays className="h-3 w-3" />
-                                      {chapter.releaseDate}
-                                      
-                                      {readPercentage > 0 && (
-                                        <span className={cn(
-                                          "ml-auto px-1.5 py-0.5 rounded text-[10px] font-medium", // Use ml-auto to push to the right
-                                          isCurrentlyReading ? "bg-purple-500/80 text-white"
-                                          : readPercentage === 100 ? "bg-green-500/80 text-white"
-                                          : "bg-sky-500/80 text-white"
-                                        )}>
-                                          {isCurrentlyReading ? "კითხულობ" 
-                                            : readPercentage === 100 ? "დასრულებულია"
-                                            : `${readPercentage}% წაკითხულია`}
-                                      </span>
+                      <Tabs value={selectedLanguage} onValueChange={(value) => setSelectedLanguage(value as 'ge' | 'en')} className="w-full">
+                        <TabsList className="mb-4 flex justify-start">
+                          <TabsTrigger value="ge" className="px-4 py-1">ქართული</TabsTrigger>
+                          <TabsTrigger value="en" className={cn(!hasEnSupport && 'opacity-70')} >English</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="ge">
+                          {geChapters.length === 0 ? (
+                            <div className="text-center py-12 border border-dashed border-white/10 rounded-lg bg-black/20 backdrop-blur-sm">
+                              <p className="text-white/70 text-lg">თავები ჯერ არ არის ხელმისაწვდომი.</p>
+                              <img src="/images/mascot/no-chapters.png" alt="No chapters mascot" className="mx-auto mt-4 w-32 h-32" />
+                            </div>
+                          ) : (
+                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                              {geChapters.map((chapter: any, index: number) => {
+                                const chapterId = chapter.id || `chapter-${chapter.number}`;
+                                const readPercentage = getReadPercentage(mangaId, chapterId);
+                                const isCurrentlyReading = readingProgress?.chapterId === chapterId || readingProgress?.chapterNumber === chapter.number;
+                                
+                                return (
+                                  <motion.div
+                                    key={`chapter-${index}`}
+                                    onClick={() => handleReadClick(chapter.number, 'ge')}
+                                    className={cn(
+                                      "flex items-center justify-between bg-black/40 backdrop-blur-sm border border-white/10 rounded-lg overflow-hidden transition-all duration-200",
+                                      "hover:bg-purple-600/20 hover:border-purple-500/40 cursor-pointer group" // Enhanced hover, added group for potential inner element styling on hover
                                     )}
-                                    </div>
-                                    
-                                    {/* Simplified Progress Bar - only show if not 100% and not actively reading this one directly */}
-                                    {readPercentage > 0 && readPercentage < 100 && !isCurrentlyReading && (
-                                      <div className="mt-2 w-full max-w-xs">
-                                        <Progress 
-                                          value={readPercentage} 
-                                          className="h-1 bg-gray-700/50 group-hover:bg-gray-600/50" 
-                                          indicatorClassName="bg-sky-500 group-hover:bg-sky-400"
-                                        />
+                                    whileHover={{ scale: 1.02, y: -2 }} // Slightly more noticeable hover scale
+                                    whileTap={{ scale: 0.99 }}
+                                  >
+                                    <div className="flex items-center flex-1 p-3 md:p-4">
+                                      <div className={cn(
+                                        "h-10 w-10 md:h-12 md:w-12 rounded-lg flex items-center justify-center text-lg mr-3 md:mr-4 flex-shrink-0 font-semibold transition-colors duration-200", // Larger, rounded-lg, font-semibold
+                                        isCurrentlyReading 
+                                          ? "bg-purple-600 text-white ring-2 ring-purple-400/50 group-hover:bg-purple-500"
+                                          : readPercentage === 100
+                                            ? "bg-green-600 text-white group-hover:bg-green-500"
+                                            : readPercentage > 0
+                                              ? "bg-sky-600 text-white group-hover:bg-sky-500" // Different color for in-progress
+                                              : "bg-gray-700 group-hover:bg-gray-600 text-gray-300"
+                                      )}>
+                                        {chapter.number} {/* Display chapter number directly */}
                                       </div>
+                                      <div className="min-w-0 flex-1">
+                                        <h3 className="font-medium text-sm md:text-base truncate group-hover:text-purple-300 transition-colors duration-200">
+                                          {chapter.title} {/* Removed "Chapter {chapter.number}:" as number is prominent now */}
+                                        </h3>
+                                        
+                                        <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
+                                          <CalendarDays className="h-3 w-3" />
+                                          {chapter.releaseDate}
+                                          
+                                          {readPercentage > 0 && (
+                                            <span className={cn(
+                                              "ml-auto px-1.5 py-0.5 rounded text-[10px] font-medium", // Use ml-auto to push to the right
+                                              isCurrentlyReading ? "bg-purple-500/80 text-white"
+                                              : readPercentage === 100 ? "bg-green-500/80 text-white"
+                                              : "bg-sky-500/80 text-white"
+                                            )}>
+                                              {isCurrentlyReading ? "კითხულობ" 
+                                                : readPercentage === 100 ? "დასრულებულია"
+                                                : `${readPercentage}% წაკითხულია`}
+                                          </span>
+                                        )}
+                                        </div>
+                                        
+                                        {/* Simplified Progress Bar - only show if not 100% and not actively reading this one directly */}
+                                        {readPercentage > 0 && readPercentage < 100 && !isCurrentlyReading && (
+                                          <div className="mt-2 w-full max-w-xs">
+                                            <Progress 
+                                              value={readPercentage} 
+                                              className="h-1 bg-gray-700/50 group-hover:bg-gray-600/50" 
+                                              indicatorClassName="bg-sky-500 group-hover:bg-sky-400"
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {/* REMOVED READ BUTTON */}
+                                  </motion.div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </TabsContent>
+                        
+                                                <TabsContent value="en">
+                          {enChapters.length === 0 ? (
+                            englishLoading ? (
+                              <div className="py-12 flex flex-col items-center justify-center gap-3 text-purple-300">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                                <span className="text-sm">თავები იტვირთება...</span>
+                              </div>
+                            ) : (
+                              <div className="text-center py-12 border border-dashed border-white/10 rounded-lg bg-black/20 backdrop-blur-sm">
+                                <p className="text-white/70 text-lg">English chapters are not available yet.</p>
+                                <img src="/images/mascot/no-chapters.png" alt="No English chapters" className="mx-auto mt-4 w-32 h-32" />
+                              </div>
+                            )
+                          ) : (
+                            <div
+                              ref={englishListRef}
+                              onScroll={handleEnglishScroll}
+                              className="space-y-3 max-h-[60vh] overflow-y-auto pr-2"
+                            >
+                              {enChapters.map((chapter: any, index: number) => {
+                                const chapterId = chapter.id || `chapter-${chapter.number}`;
+                                const readPercentage = getReadPercentage(mangaId, chapterId);
+                                const isCurrentlyReading = readingProgress?.chapterId === chapterId || readingProgress?.chapterNumber === chapter.number;
+                                
+                                return (
+                                  <motion.div
+                                    key={`en-chapter-${chapter.id || chapter.number}-${index}`}
+                                    onClick={() => handleReadClick(chapter.number, 'en')}
+                                    className={cn(
+                                      "flex items-center justify-between bg-black/40 backdrop-blur-sm border border-white/10 rounded-lg overflow-hidden transition-all duration-200",
+                                      "hover:bg-purple-600/20 hover:border-purple-500/40 cursor-pointer group" // Enhanced hover, added group for potential inner element styling on hover
                                     )}
-                                  </div>
+                                    whileHover={{ scale: 1.02, y: -2 }} // Slightly more noticeable hover scale
+                                    whileTap={{ scale: 0.99 }}
+                                  >
+                                    <div className="flex items-center flex-1 p-3 md:p-4">
+                                      <div className={cn(
+                                        "h-10 w-10 md:h-12 md:w-12 rounded-lg flex items-center justify-center text-lg mr-3 md:mr-4 flex-shrink-0 font-semibold transition-colors duration-200", // Larger, rounded-lg, font-semibold
+                                        isCurrentlyReading 
+                                          ? "bg-purple-600 text-white ring-2 ring-purple-400/50 group-hover:bg-purple-500"
+                                          : readPercentage === 100
+                                            ? "bg-green-600 text-white group-hover:bg-green-500"
+                                            : readPercentage > 0
+                                              ? "bg-sky-600 text-white group-hover:bg-sky-500" // Different color for in-progress
+                                              : "bg-gray-700 group-hover:bg-gray-600 text-gray-300"
+                                      )}>
+                                        {chapter.number} {/* Display chapter number directly */}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <h3 className="font-medium text-sm md:text-base truncate group-hover:text-purple-300 transition-colors duration-200">
+                                          {chapter.title} {/* Removed "Chapter {chapter.number}:" as number is prominent now */}
+                                        </h3>
+                                        
+                                        <div className="text-xs text-gray-400 flex items-center gap-2 mt-1">
+                                          <CalendarDays className="h-3 w-3" />
+                                          {chapter.releaseDate}
+                                          
+                                          {readPercentage > 0 && (
+                                            <span className={cn(
+                                              "ml-auto px-1.5 py-0.5 rounded text-[10px] font-medium", // Use ml-auto to push to the right
+                                              isCurrentlyReading ? "bg-purple-500/80 text-white"
+                                              : readPercentage === 100 ? "bg-green-500/80 text-white"
+                                              : "bg-sky-500/80 text-white"
+                                            )}>
+                                              {isCurrentlyReading ? "კითხულობ" 
+                                                : readPercentage === 100 ? "დასრულებულია"
+                                                : `${readPercentage}% წაკითხულია`}
+                                            </span>
+                                        )}
+                                        </div>
+                                        
+                                        {/* Simplified Progress Bar - only show if not 100% and not actively reading this one directly */}
+                                        {readPercentage > 0 && readPercentage < 100 && !isCurrentlyReading && (
+                                          <div className="mt-2 w-full max-w-xs">
+                                            <Progress 
+                                              value={readPercentage} 
+                                              className="h-1 bg-gray-700/50 group-hover:bg-gray-600/50" 
+                                              indicatorClassName="bg-sky-500 group-hover:bg-sky-400"
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {/* REMOVED READ BUTTON */}
+                                  </motion.div>
+                                );
+                              })}
+
+                              {/* Loading indicator and end-of-list message */}
+                              {englishLoading && (
+                                <div className="py-4 flex items-center justify-center gap-2 text-purple-300 text-sm">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <span>თავები იტვირთება...</span>
                                 </div>
-                                {/* REMOVED READ BUTTON */}
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              )}
+                              
+                              {!englishHasMore && !englishLoading && enChapters.length > 0 && (
+                                <div className="py-4 text-center text-gray-400 text-sm">
+                                  <span>ყველა English თავი ჩამოიტვირთა</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </TabsContent>
+                      </Tabs>
                     </div>
                     
                     {/* Right side: Characters grid */}
@@ -1692,7 +1965,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                       )}
                     
                       {/* Right side (continued): Related/Recommended - Move inside the same column div */}
-                      {/* Adjust spacing */} 
+                      {/* Adjust spacing */}
                       {/* Related manga */} 
                       {processedData.relations && processedData.relations.length > 0 && (
                         <motion.section 

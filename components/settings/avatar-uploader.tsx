@@ -47,10 +47,21 @@ export function AvatarUploader({ userId, currentAvatarUrl, onAvatarUpdate, usern
 
     setUploading(true);
     try {
+      // Delete old avatar if exists
+      if (currentAvatarUrl) {
+        const urlParts = currentAvatarUrl.split('/');
+        const oldFilename = urlParts[urlParts.length - 1];
+        if (oldFilename) {
+          const oldPath = `private/${userId}/${oldFilename}`;
+          const { error: deleteError } = await supabase.storage.from('avatars').remove([oldPath]);
+          if (deleteError) console.warn('Failed to delete old avatar:', deleteError);
+        }
+      }
+
       // Create a unique file name to prevent caching issues and overwrites if desired
       // Alternatively, use a fixed name like 'avatar.png' and rely on cache-busting query params
       const fileName = `avatar-${Date.now()}.${file.name.split('.').pop()}`;
-      const filePath = `${userId}/${fileName}`;
+      const filePath = `private/${userId}/${fileName}`;
 
       // Upload file to Supabase Storage
       const { error: uploadError } = await supabase.storage

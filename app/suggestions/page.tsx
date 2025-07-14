@@ -15,9 +15,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { ArrowDownAZ, ArrowUpAZ, Sparkles, MessageSquare, BugIcon, Lightbulb, BadgeInfo, PenTool, ChevronRight, BookOpen, Search, Filter, Plus, RefreshCcw, SortAsc } from "lucide-react";
 import { useAuth } from "@/components/supabase-auth-provider";
+import { useLanguage } from "@/hooks/use-preferred-language";
 import {
   getAllSuggestions,
   toggleVote,
+  toggleDownvote,
   Suggestion,
 } from "@/lib/feedback";
 import NewSuggestionDialog from "./components/new-suggestion-dialog";
@@ -54,6 +56,7 @@ const staggerContainer = {
 
 export default function FeedbackPage() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const userId = user?.id;
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,7 +76,7 @@ export default function FeedbackPage() {
       setIsLoadingSuggestions(false);
     } catch (error) {
       console.error("Error loading suggestions:", error);
-      toast.error("Could not load suggestions. Please try again later.");
+      toast.error(t('suggestionsLoadFailed'));
       setIsLoadingSuggestions(false);
     }
   };
@@ -91,7 +94,7 @@ export default function FeedbackPage() {
 
   const handleVote = async (suggestionId: string, hasVoted: boolean) => {
     if (!userId) {
-      toast.error("You must be signed in to vote");
+      toast.error(t('voteRequiresAuth'));
       return;
     }
     
@@ -113,7 +116,35 @@ export default function FeedbackPage() {
       );
     } catch (error) {
       console.error("Error voting:", error);
-      toast.error("Could not register your vote. Please try again.");
+      toast.error(t('voteFailed'));
+    }
+  };
+
+  const handleDownvote = async (suggestionId: string, hasDownvoted: boolean) => {
+    if (!userId) {
+      toast.error(t('voteRequiresAuth'));
+      return;
+    }
+    
+    try {
+      const result = await toggleDownvote(suggestionId, userId);
+      
+      // Update local state
+      setSuggestions((prev) =>
+        prev.map((s) => {
+          if (s.id === suggestionId) {
+            return {
+              ...s,
+              downvote_count: hasDownvoted ? s.downvote_count - 1 : s.downvote_count + 1,
+              has_downvoted: !hasDownvoted,
+            };
+          }
+          return s;
+        })
+      );
+    } catch (error) {
+      console.error("Error downvoting:", error);
+      toast.error(t('downvoteFailed'));
     }
   };
 
@@ -200,11 +231,10 @@ export default function FeedbackPage() {
           <m.div className="flex flex-col gap-2" variants={fadeIn}>
             <h1 className="pl-8 text-2xl font-bold tracking-tight flex items-center">
               <MessageSquare className="h-5 w-5 mr-2 text-purple-400" />
-              უკუკავშირი
+              {t('feedback')}
             </h1>
             <p className="text-muted-foreground">
-              წარმოადგინეთ თქვენი იდეები, შეგვატყობინეთ შეცდომების შესახებ ან შემოგვთავაზეთ გაუმჯობესების იდეები. 
-              ასევე შეგიძლიათ მისცეთ ხმა მოთხოვნებს ან იდეებს, რომელთა დანერგვაც გსურთ.
+              {t('feedbackDescription')}
             </p>
           </m.div>
 
@@ -214,7 +244,7 @@ export default function FeedbackPage() {
           >
             <div className="flex-1 w-full sm:max-w-sm relative">
               <Input
-                placeholder="მოთხოვნების ძიება..."
+                placeholder={t('searchSuggestions')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 focus:border-purple-500 transition-all"
@@ -229,7 +259,7 @@ export default function FeedbackPage() {
                 size="sm"
               >
                 <Sparkles className="h-4 w-4 mr-2" />
-                ახალი მოთხოვნა
+                {t('newSuggestion')}
               </Button>
 
               <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as "popular" | "newest")}>
@@ -240,13 +270,13 @@ export default function FeedbackPage() {
                   <SelectItem value="popular">
                     <div className="flex items-center">
                       <ArrowUpAZ className="h-4 w-4 mr-2" />
-                      პოპულარული
+                      {t('popular')}
                     </div>
                   </SelectItem>
                   <SelectItem value="newest">
                     <div className="flex items-center">
                       <ArrowDownAZ className="h-4 w-4 mr-2" />
-                      ახალი
+                      {t('newest')}
                     </div>
                   </SelectItem>
                 </SelectContent>
@@ -261,37 +291,37 @@ export default function FeedbackPage() {
                   value="all" 
                   className="text-[13px] data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-600/80 data-[state=active]:to-indigo-600/80 data-[state=active]:text-white"
                 >
-                  ყველა
+                  {t('all')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="anime" 
                   className="text-[13px] data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-600/80 data-[state=active]:to-indigo-600/80 data-[state=active]:text-white"
                 >
-                  ანიმე
+                  {t('anime')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="manga" 
                   className="text-[13px] data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-600/80 data-[state=active]:to-indigo-600/80 data-[state=active]:text-white"
                 >
-                  მანგა
+                  {t('manga')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="sticker" 
                   className="text-[13px] data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-600/80 data-[state=active]:to-indigo-600/80 data-[state=active]:text-white"
                 >
-                  სტიკერები
+                  {t('stickers')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="bug" 
                   className="text-[13px] data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-600/80 data-[state=active]:to-indigo-600/80 data-[state=active]:text-white"
                 >
-                  შეცდომები
+                  {t('bugs')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="feature" 
                   className="text-[13px] data-[state=active]:bg-gradient-to-br data-[state=active]:from-purple-600/80 data-[state=active]:to-indigo-600/80 data-[state=active]:text-white"
                 >
-                  ფუნქციები
+                  {t('features')}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -324,18 +354,18 @@ export default function FeedbackPage() {
                 >
                   <img src="/images/mascot/suggestion.png" alt="Suggestion mascot" className="mx-auto w-32 h-32" />
                 </m.div>
-                <h3 className="text-lg font-medium">მოთხოვნები ვერ მოიძებნა</h3>
+                <h3 className="text-lg font-medium">{t('suggestionsNotFound')}</h3>
                 <p className="text-muted-foreground mt-1 max-w-md mx-auto">
                   {searchQuery.trim()
-                    ? "სცადეთ სხვა საძიებო ტერმინი"
-                    : "იყავით პირველი, ვინც დაამატებს მოთხოვნას!"}
+                    ? t('tryDifferentSearch')
+                    : t('beFirst')}
                 </p>
                 <Button 
                   onClick={() => setIsDialogOpen(true)} 
                   className="mt-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
-                  ახალი მოთხოვნა
+                  {t('newSuggestion')}
                 </Button>
               </m.div>
             ) : (
@@ -364,12 +394,17 @@ export default function FeedbackPage() {
                         votes: suggestion.vote_count,
                         userHasVoted: suggestion.has_voted,
                         profile: {
-                          displayName: suggestion.user?.name || suggestion.user?.username || "Anonymous",
+                          displayName: suggestion.user?.name || suggestion.user?.username || t('anonymous'),
                           avatarUrl: getSupabaseAvatarUrl(suggestion.user?.id || "", suggestion.user?.image || null) || ""
                         }
                       }}
+                      downvotes={suggestion.downvote_count}
+                      userHasDownvoted={suggestion.has_downvoted}
                       onVote={() =>
                         handleVote(suggestion.id, suggestion.has_voted)
+                      }
+                      onDownvote={() =>
+                        handleDownvote(suggestion.id, suggestion.has_downvoted)
                       }
                     />
                   </m.div>

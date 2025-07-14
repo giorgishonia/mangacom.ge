@@ -1,12 +1,42 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
+function getAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  console.log('Admin client check:', {
+    hasUrl: !!supabaseUrl,
+    hasServiceKey: !!serviceRoleKey,
+    urlLength: supabaseUrl?.length || 0,
+    keyLength: serviceRoleKey?.length || 0
+  });
+  
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase service role environment variables')
+  }
+  
+  return createSupabaseClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    }
+  )
+}
 
 // Comment schema for validation
 const commentSchema = z.object({
   contentId: z.string(),
-  contentType: z.enum(['anime', 'manga']),
-  text: z.string().min(1).max(1000)
+  contentType: z.enum(['anime', 'manga', 'comics']),
+  text: z.string().min(1).max(2000),
+  mediaUrl: z.string().optional().nullable(),
+  parentCommentId: z.string().optional().nullable()
 })
 
 export async function GET(request: Request) {
@@ -63,10 +93,49 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  // Use Supabase for authentication
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  // Try multiple ways to get user authentication
+  let userId = null;
+  let session = null;
+
+  // Method 1: Check Authorization header for Bearer token
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    try {
+      const supabaseWithToken = createClient();
+      const { data: { user }, error } = await supabaseWithToken.auth.getUser(token);
+      if (user && !error) {
+        userId = user.id;
+        console.log('POST /api/comments - Auth via Bearer token successful:', {
+          hasUserId: !!userId,
+          userEmail: user.email?.substring(0, 5) + '...' || 'none'
+        });
+      }
+    } catch (tokenError) {
+      console.warn('Failed to verify Bearer token:', tokenError);
+    }
+  }
+
+  // Method 2: Fall back to session-based auth if Bearer token didn't work
+  if (!userId) {
+    const supabase = createClient();
+    const { data: { session: sessionData } } = await supabase.auth.getSession();
+    session = sessionData;
+    userId = session?.user?.id;
+    
+    console.log('POST /api/comments - Auth via session:', {
+      hasSession: !!session,
+      hasUserId: !!userId,
+      userEmail: session?.user?.email?.substring(0, 5) + '...' || 'none'
+    });
+  }
+
+  if (!userId) {
+    console.log('No user ID found via any method, returning 401');
+    return NextResponse.json({ 
+      error: 'Authentication required' 
+    }, { status: 401 });
+  }
 
   try {
     const body = await request.json()
@@ -81,23 +150,101 @@ export async function POST(request: Request) {
     }
     
     const { contentId, contentType, text } = result.data
+    const { mediaUrl, parentCommentId } = result.data
 
-    // In a real implementation, save to your database
-    // Example: const comment = await db.comments.create({ data: { ... } })
-    
-    // Return mock response
-    const newComment = {
-      id: `comment-${Date.now()}`,
-      userId,
-      userName: session?.user?.name,
-      userImage: session?.user?.image,
-      contentId,
-      contentType,
-      text,
-      createdAt: new Date().toISOString()
+    // Insert into database using service-role client to bypass RLS constraints safely
+
+    let supabaseAdmin;
+    try {
+      supabaseAdmin = getAdminClient();
+    } catch (adminError) {
+      console.error('Failed to create admin client:', adminError);
+      // Fall back to regular client with user auth
+      supabaseAdmin = supabase;
     }
 
-    return NextResponse.json({ comment: newComment }, { status: 201 })
+    const insertPayload: any = {
+      user_id: userId,
+      content_id: contentId,
+      content_type: contentType.toLowerCase(),
+      text,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (mediaUrl) insertPayload.media_url = mediaUrl;
+    if (parentCommentId) insertPayload.parent_comment_id = parentCommentId;
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from('comments')
+      .insert(insertPayload)
+      .select('*')
+      .single();
+
+    if (insertError) {
+      console.error('Error inserting comment:', insertError);
+      
+      // If RLS error and we used regular client, provide helpful error message
+      if (insertError.code === '42501' && supabaseAdmin === supabase) {
+        return NextResponse.json({ 
+          error: 'Authentication required. Please log out and log back in.' 
+        }, { status: 403 });
+      }
+      
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    // Fetch user profile data to attach to the comment
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, avatar_url, vip_status, vip_theme, comment_background_url')
+      .eq('id', userId)
+      .single();
+
+    if (profileError && !profileError.message.includes('No rows found')) {
+      console.warn('Error fetching profile for new comment:', profileError);
+    }
+
+    // Helper function to get correct avatar URL (same as in comments.ts)
+    function getSupabaseAvatarUrl(userId: string | null, providedAvatarUrl: string | null | undefined): string | null {
+      if (!userId) return null;
+      const avatarUrl = providedAvatarUrl ?? null;
+
+      // If profile already stores a full URL, just return it.
+      if (avatarUrl && avatarUrl.trim() !== '') {
+        if (/^https?:\/\//.test(avatarUrl)) {
+          return avatarUrl;
+        }
+        if (avatarUrl.includes('/public/') || avatarUrl.includes('avatars/public')) {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+          return `${supabaseUrl}/storage/v1/object/${avatarUrl.replace(/^\//, '')}`;
+        }
+        return null;
+      }
+
+      // Use DiceBear as fallback
+      return `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
+    }
+
+    // Attach profile data to the comment
+    const commentWithProfile = {
+      ...inserted,
+      user_profile: profile ? {
+        username: profile.username || 'მომხმარებელი',
+        avatar_url: getSupabaseAvatarUrl(userId, profile.avatar_url),
+        vip_status: profile.vip_status || false,
+        vip_theme: profile.vip_theme || null,
+        comment_background_url: profile.comment_background_url || null
+      } : {
+        username: 'მომხმარებელი',
+        avatar_url: getSupabaseAvatarUrl(userId, null),
+        vip_status: false,
+        vip_theme: null,
+        comment_background_url: null
+      }
+    };
+
+    return NextResponse.json({ comment: commentWithProfile }, { status: 201 })
   } catch (error) {
     console.error('Error creating comment:', error)
     return NextResponse.json(

@@ -75,12 +75,6 @@ import { getRecentlyRead, ReadingProgress } from '@/lib/reading-history';
 import { cn } from '@/lib/utils';
 import { BannerUploader } from '@/components/profile/banner-uploader';
 
-// REMOVE Placeholder type definition - use imported UserProfile
-// interface UserProfile { ... }
-
-// REMOVE Placeholder fetch function - use imported getUserProfileByUsername
-// async function getUserProfileByUsername(username: string): Promise<UserProfile | null> { ... }
-
 // RE-ADD local interface definitions
 // Interface for content item
 interface ContentItem {
@@ -107,9 +101,6 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 function isUUID(str: string) {
   return UUID_REGEX.test(str);
 }
-
-// Function to calculate age (keep as is)
-// ... calculateAge function ...
 
 // Helper to compute stats from a watchlist array
 function computeStats(items: any[]): {
@@ -178,15 +169,39 @@ function getTimeAgo(date: Date): string {
   return `${Math.floor(diff / 31536000)} წლის წინ`;
 }
 
-function MangaListItem({ item }: { item: any }) {
+// Enhanced Content Card Component - matching main profile page
+function ContentCard({ item }: { item: any }) {
   return (
-    <div className="rounded-[10px] overflow-hidden">
+    <div className="group relative bg-gray-800/30 rounded-xl overflow-hidden border border-gray-700/50 hover:border-gray-600/50 transition-all duration-300 hover:scale-105">
       <div className="relative">
-        <ImageSkeleton src={item.image || "/placeholder.svg"} alt={item.title} className="w-full aspect-[2/3] object-cover rounded-[10px]" />
+        <ImageSkeleton 
+          src={item.image || "/placeholder.svg"} 
+          alt={item.title} 
+          className="w-full aspect-[2/3] object-cover"
+        />
+        
+        {/* Progress overlay */}
+        {item.progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-white/80">პროგრესი</span>
+              <span className="text-white font-medium">
+                {item.progress}/{item.total || "?"}
+              </span>
+            </div>
+            <Progress 
+              value={(item.progress / (item.total || item.progress)) * 100} 
+              className="h-1.5 bg-gray-700/50" 
+            />
+          </div>
+        )}
       </div>
-      <div className="p-3">
-        <h3 className="font-medium text-sm line-clamp-1">{item.georgianTitle}</h3>
-        {item.georgianTitle !== item.title && item.title && <p className="text-xs text-gray-400 line-clamp-1">{item.title}</p>}
+      
+      <div className="p-4">
+        <h3 className="font-medium text-sm line-clamp-2 mb-2 min-h-[2.5rem]">{item.georgianTitle}</h3>
+        {item.georgianTitle !== item.title && item.title && (
+          <p className="text-xs text-gray-400 line-clamp-1">{item.title}</p>
+        )}
       </div>
     </div>
   );
@@ -194,17 +209,29 @@ function MangaListItem({ item }: { item: any }) {
 
 function ActivityItemDisplay({ type, action, title, details, time }: { type: "manga" | "comics" | "anime"; action: string; title: string; details: string; time: string; }) {
   return (
-    <div className="flex items-start gap-3 p-3 bg-gray-800/50 rounded-lg">
-      <div className={`p-2 rounded-full ${type === "manga" ? "bg-purple-500/20" : type === "comics" ? "bg-green-500/20" : "bg-blue-500/20"}`}>{type === "manga" ? <BookOpen className="h-5 w-5 text-purple-400" /> : type === "comics" ? <Book className="h-5 w-5 text-green-400" /> : <Film className="h-5 w-5 text-blue-400" />}</div>
+    <div className="flex items-start gap-4 p-4 bg-gray-800/30 rounded-lg border border-gray-700/50 hover:border-gray-600/50 transition-all">
+      <div className={`p-3 rounded-full ${
+        type === "manga" ? "bg-purple-500/20 text-purple-400" : 
+        type === "comics" ? "bg-green-500/20 text-green-400" : 
+        "bg-blue-500/20 text-blue-400"
+      }`}>
+        {type === "manga" ? (
+          <BookOpen className="h-5 w-5" />
+        ) : type === "comics" ? (
+          <Book className="h-5 w-5" />
+        ) : (
+          <Film className="h-5 w-5" />
+        )}
+      </div>
       <div className="flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-1">
           <span className="font-medium">{action}</span>
-          <span className="text-gray-400">•</span>
+          <span className="text-gray-500">•</span>
           <span className="text-gray-300">{title}</span>
         </div>
         <div className="text-sm text-gray-400">{details}</div>
       </div>
-      <div className="text-xs text-gray-500">{time}</div>
+      <div className="text-xs text-gray-500 flex-shrink-0">{time}</div>
     </div>
   );
 }
@@ -661,9 +688,9 @@ export default function ProfilePage() {
 
       <main className="flex-1 overflow-x-hidden md:pl-[77px]">
         {/* Profile header */}
-        <div className="relative mb-8">
+        <div className="relative">
           {/* Cover image or VIP banner */}
-          <div className="h-48 overflow-hidden relative">
+          <div className="h-56 overflow-hidden relative">
             {targetProfile?.vip_status && profileBanner ? (
               <Image
                 src={profileBanner}
@@ -672,12 +699,13 @@ export default function ProfilePage() {
                 className="object-cover"
               />
             ) : (
-              <div className="h-48 bg-gradient-to-r from-purple-900 to-blue-900">
-                <div className="absolute inset-0 bg-black/30" />
+              <div className="h-56 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+                <div className="absolute inset-0 bg-black/20" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
               </div>
             )}
             {targetProfile?.vip_status && (
-              <div className="absolute top-4 right-4">
+              <div className="absolute top-6 right-6">
                 <VIPBadge size="md" />
               </div>
             )}
@@ -685,7 +713,7 @@ export default function ProfilePage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="absolute bottom-4 right-4 bg-black/50 hover:bg-black/70 text-white"
+                className="absolute bottom-6 right-6 bg-black/60 hover:bg-black/80 text-white border-white/20 backdrop-blur-sm"
                 onClick={() => setShowBannerUpload(true)}
               >
                 <UploadIcon className="h-4 w-4 mr-2" />
@@ -695,11 +723,16 @@ export default function ProfilePage() {
           </div>
 
           {/* Profile info container with padding */}
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="relative -mt-16 flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6 pb-6 border-b border-gray-800">
+          <div className="container mx-auto px-6">
+            <div className="relative -mt-20 flex flex-col lg:flex-row items-center lg:items-end gap-6 pb-8">
               {/* Avatar - Increased size and added ring */} 
               <div className="relative flex-shrink-0">
-                <div className="w-32 h-32 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-gray-950 ring-2 ring-purple-500/50 shadow-lg">
+                <div className={cn(
+                  "w-32 h-32 lg:w-40 lg:h-40 rounded-full overflow-hidden border-4 shadow-2xl",
+                  targetProfile?.vip_status 
+                    ? "border-purple-500 shadow-purple-900/50 ring-4 ring-purple-500/20" 
+                    : "border-gray-700 shadow-black/50"
+                )}>
                   <ImageSkeleton
                     src={targetProfile.avatar_url || "/placeholder.svg"}
                     alt={targetProfile.username || "მომხმარებელი"}
@@ -709,9 +742,9 @@ export default function ProfilePage() {
               </div>
 
               {/* User info - improved spacing */} 
-              <div className="flex-1 text-center md:text-left mt-4 md:mt-0">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-start justify-center gap-2 md:gap-4 mb-1">
-                  <h1 className="text-2xl md:text-3xl font-bold text-white break-words">
+              <div className="flex-1 text-center lg:text-left lg:ml-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-center lg:justify-start gap-3 lg:gap-4">
+                  <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                      {targetProfile.first_name || targetProfile.last_name 
                         ? `${targetProfile.first_name || ''} ${targetProfile.last_name || ''}`.trim()
                         : targetProfile.username || "მომხმარებელი"}
@@ -719,7 +752,7 @@ export default function ProfilePage() {
                   <div className="text-gray-400 text-lg">@{targetProfile.username}</div>
                 </div>
                 {/* Sub-info (Joined, Location, Age) - increased spacing */} 
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-5 gap-y-1 text-gray-400 text-sm mt-2 mb-3">
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 mt-4 text-gray-400 text-sm">
                   <div className="flex items-center gap-1.5">
                     <Calendar className="h-4 w-4" />
                     <span>შემოგვიერთდა {targetProfile.created_at ? new Date(targetProfile.created_at).toLocaleDateString('ka-GE', { month: 'long', year: 'numeric' }) : "ცოტა ხნის წინ"}</span>
@@ -756,11 +789,13 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 {/* Bio */} 
-                <p className="mt-1 text-gray-300 max-w-xl mx-auto md:mx-0">{targetProfile.bio || "ბიოგრაფია არ არის დამატებული."}</p>
+                <p className="mt-4 text-gray-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
+                  {targetProfile.bio || "ბიოგრაფია არ არის დამატებული."}
+                </p>
               </div>
 
               {/* Actions - Added spacing */} 
-              <div className="flex gap-3 mt-4 md:mt-0 flex-shrink-0 self-center md:self-end">
+              <div className="flex gap-3 mt-6 lg:mt-0 flex-shrink-0">
                 {/* Friend Button - only when viewing someone else's profile */}
                 {!isOwnProfile && loggedInUser && targetProfile && (
                   <FriendButton
@@ -774,7 +809,7 @@ export default function ProfilePage() {
                     <DialogTrigger asChild>
                       <Button 
                         variant="outline" 
-                        className="bg-gray-800 border-gray-700 hover:bg-gray-700"
+                        className="bg-gray-800/80 border-gray-600 hover:bg-gray-700 backdrop-blur-sm"
                       >
                         <Settings className="h-4 w-4 mr-2" />
                         პარამეტრები
@@ -814,49 +849,40 @@ export default function ProfilePage() {
                 {showRefreshButton && (
                     <Button 
                         variant="outline" 
-                        className="bg-gray-800 border-gray-700 hover:bg-gray-700"
+                        className="bg-gray-800/80 border-gray-600 hover:bg-gray-700 backdrop-blur-sm"
                         onClick={handleRefreshSession}
                         disabled={isRefreshing}
                       >
+                        {isRefreshing ? (
+                          <div className="h-4 w-4 border-t-2 border-b-2 border-white rounded-full animate-spin mr-2"></div>
+                        ) : (
+                          <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path 
+                              d="M1 4V10H7" 
+                              stroke="currentColor" 
+                              strokeWidth="2" 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round"
+                            />
+                            <path 
+                              d="M23 20V14H17" 
+                              stroke="currentColor" 
+                              strokeWidth="2" 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round"
+                            />
+                            <path 
+                              d="M20.49 9.00001C19.9828 7.5668 19.1209 6.28542 17.9845 5.27543C16.8482 4.26545 15.4745 3.55976 13.9917 3.22426C12.5089 2.88877 10.9652 2.93436 9.50481 3.35685C8.04437 3.77935 6.71475 4.56397 5.64 5.64001L1 10M23 14L18.36 18.36C17.2853 19.4361 15.9556 20.2207 14.4952 20.6432C13.0348 21.0657 11.4911 21.1113 10.0083 20.7758C8.52547 20.4403 7.1518 19.7346 6.01547 18.7246C4.87913 17.7146 4.01717 16.4332 3.51 15"
+                              stroke="currentColor" 
+                              strokeWidth="2" 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        )}
                         სესიის განახლება
                      </Button>
                 )}
-                
-                {/* Dropdown Menu */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                       <Button variant="outline" className="bg-gray-800 border-gray-700 hover:bg-gray-700 px-2">
-                          <MoreHorizontal className="h-4 w-4" />
-                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-gray-900 border-gray-800 text-gray-200">
-                       {isOwnProfile ? (
-                         <>
-                           <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                             <Eye className="h-4 w-4 mr-2" />
-                             საჯაროდ ნახვა
-                           </DropdownMenuItem>
-                           <DropdownMenuSeparator className="bg-gray-800" />
-                           <DropdownMenuItem className="text-red-500 hover:bg-gray-800 hover:text-red-500 cursor-pointer">
-                             <Trash2 className="h-4 w-4 mr-2" />
-                             ანგარიშის წაშლა
-                           </DropdownMenuItem>
-                         </>
-                       ) : (
-                         <>
-                           <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => toast.info('Reported') }>
-                             <Flag className="h-4 w-4 mr-2 text-red-400" />
-                             ანგარიშის დაგმობა
-                           </DropdownMenuItem>
-                           <DropdownMenuSeparator className="bg-gray-800" />
-                           <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => toast.info('Blocked (not implemented)') }>
-                             <XCircle className="h-4 w-4 mr-2" />
-                             ბლოკირება
-                           </DropdownMenuItem>
-                         </>
-                       )}
-                    </DropdownMenuContent>
-                 </DropdownMenu>
               </div>
             </div>
           </div>
@@ -864,21 +890,9 @@ export default function ProfilePage() {
 
         {canViewPrivate ? (
           <>
-            {/* Stats overview */}
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
-              <h2 className="text-xl font-semibold mb-4 text-white">სტატისტიკა</h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Manga stats */}
-                <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-5 border border-gray-800">
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                     <StatCard label="ვკითხულობ" value={stats?.manga?.reading ?? 0} icon={<BookOpen className="h-5 w-5 text-green-400" />} />
-                     <StatCard label="დასრულებული" value={stats?.manga?.completed ?? 0} icon={<Check className="h-5 w-5 text-blue-400" />} />
-                     <StatCard label="შეჩერებული" value={stats?.manga?.onHold ?? 0} icon={<PauseCircle className="h-5 w-5 text-yellow-400" />} />
-                     <StatCard label="მიტოვებული" value={stats?.manga?.dropped ?? 0} icon={<X className="h-5 w-5 text-red-400" />} />
-                     <StatCard label="წასაკითხი" value={stats?.manga?.planToRead ?? 0} icon={<Clock className="h-5 w-5 text-purple-400" />} />
-                   </div>
-                </div>
-
+            {/* Stats and sections */}
+            <div className="container mx-auto px-6 py-8">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                 {/* Top List */}
                 <TopListSection isOwner={isOwnProfile} username={targetProfile.username ?? undefined} />
 
@@ -888,78 +902,154 @@ export default function ProfilePage() {
             </div>
 
             {/* Content tabs */}
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="container mx-auto px-6 py-8">
               <Tabs defaultValue="manga" className="w-full">
-                <TabsList className="mb-6 overflow-x-auto justify-start">
-                  <TabsTrigger value="manga" className="flex items-center gap-2 flex-shrink-0">
+                <TabsList className="mb-8 overflow-x-auto justify-start bg-gray-900/50 border border-gray-800">
+                  <TabsTrigger value="manga" className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-purple-600">
                     <BookOpen className="h-4 w-4" />
                     მანგა
                   </TabsTrigger>
-                  <TabsTrigger value={"comics" as any} className="flex items-center gap-2 flex-shrink-0">
+                  <TabsTrigger value={"comics" as any} className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-green-600">
                     <Book className="h-4 w-4" />
                     კომიქსი
                   </TabsTrigger>
-                  <TabsTrigger value="activity" className="flex items-center gap-2 flex-shrink-0">
+                  <TabsTrigger value="activity" className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-blue-600">
                     <TrendingUp className="h-4 w-4" />
                     აქტივობა
                   </TabsTrigger>
                   {isOwnProfile && (
-                    <TabsTrigger value="history" className="flex items-center gap-2 flex-shrink-0">
+                    <TabsTrigger value="history" className="flex items-center gap-2 flex-shrink-0 data-[state=active]:bg-orange-600">
                       <History className="h-4 w-4" />
                       ისტორია
                     </TabsTrigger>
                   )}
                 </TabsList>
 
-                {/* Manga Tab Content (reuse code from main profile) */}
+                {/* Manga Tab Content */}
                 <TabsContent value="manga">
-                  {/* reuse manga tab content from profile version, referencing activeMangaTab etc. We'll insert simplified version (reading/completed/planToRead). */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-4 overflow-x-auto pb-2">
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "reading" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={() => setActiveMangaTab("reading")}>ვკითხულობ ({stats.manga.reading})</Button>
-                        <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "completed" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={() => setActiveMangaTab("completed")}>დასრულებული ({stats.manga.completed})</Button>
-                        <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "planToRead" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={() => setActiveMangaTab("planToRead")}>წასაკითხი ({stats.manga.planToRead})</Button>
+                  <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                    <div className="flex items-center justify-between mb-6 overflow-x-auto pb-2">
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "text-sm transition-all",
+                            activeMangaTab === "reading" 
+                              ? "bg-purple-600 text-white hover:bg-purple-700" 
+                              : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                          )}
+                          onClick={() => setActiveMangaTab("reading")}
+                        >
+                          ვკითხულობ ({stats.manga.reading})
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "text-sm transition-all",
+                            activeMangaTab === "completed" 
+                              ? "bg-blue-600 text-white hover:bg-blue-700" 
+                              : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                          )}
+                          onClick={() => setActiveMangaTab("completed")}
+                        >
+                          დასრულებული ({stats.manga.completed})
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "text-sm transition-all",
+                            activeMangaTab === "planToRead" 
+                              ? "bg-green-600 text-white hover:bg-green-700" 
+                              : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                          )}
+                          onClick={() => setActiveMangaTab("planToRead")}
+                        >
+                          წასაკითხი ({stats.manga.planToRead})
+                        </Button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                      {activeMangaTab === "reading" && (mangaReading.length > 0 ? mangaReading.map(m => <MangaListItem key={m.id} item={m} />) : <div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                      {activeMangaTab === "completed" && (mangaCompleted.length > 0 ? mangaCompleted.map(m => <MangaListItem key={m.id} item={m} />) : <div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                      {activeMangaTab === "planToRead" && (mangaPlanToRead.length > 0 ? mangaPlanToRead.map(m => <MangaListItem key={m.id} item={m} />) : <div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                      {activeMangaTab === "reading" && (mangaReading.length > 0 ? mangaReading.map(m => <ContentCard key={m.id} item={m} />) : <div className="col-span-full text-center py-16 text-gray-400"><BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                      {activeMangaTab === "completed" && (mangaCompleted.length > 0 ? mangaCompleted.map(m => <ContentCard key={m.id} item={m} />) : <div className="col-span-full text-center py-16 text-gray-400"><BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                      {activeMangaTab === "planToRead" && (mangaPlanToRead.length > 0 ? mangaPlanToRead.map(m => <ContentCard key={m.id} item={m} />) : <div className="col-span-full text-center py-16 text-gray-400"><BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
                     </div>
                   </div>
                 </TabsContent>
 
-                {/* Comics Tab Content (simplified like main profile) */}
+                {/* Comics Tab Content */}
                 <TabsContent value={"comics" as any}>
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-4 overflow-x-auto pb-2">
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "reading" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={() => setActiveMangaTab("reading")}>ვკითხულობ</Button>
-                        <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "completed" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={() => setActiveMangaTab("completed")}>დასრულებული</Button>
-                        <Button variant="ghost" size="sm" className={cn("text-xs md:text-sm", activeMangaTab === "planToRead" ? "bg-gray-800" : "hover:bg-gray-800/50")} onClick={() => setActiveMangaTab("planToRead")}>წასაკითხი</Button>
+                  <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                    <div className="flex items-center justify-between mb-6 overflow-x-auto pb-2">
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "text-sm transition-all",
+                            activeMangaTab === "reading" 
+                              ? "bg-green-600 text-white hover:bg-green-700" 
+                              : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                          )}
+                          onClick={() => setActiveMangaTab("reading")}
+                        >
+                          ვკითხულობ
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "text-sm transition-all",
+                            activeMangaTab === "completed" 
+                              ? "bg-blue-600 text-white hover:bg-blue-700" 
+                              : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                          )}
+                          onClick={() => setActiveMangaTab("completed")}
+                        >
+                          დასრულებული
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "text-sm transition-all",
+                            activeMangaTab === "planToRead" 
+                              ? "bg-purple-600 text-white hover:bg-purple-700" 
+                              : "hover:bg-gray-800/50 text-gray-400 hover:text-white"
+                          )}
+                          onClick={() => setActiveMangaTab("planToRead")}
+                        >
+                          წასაკითხი
+                        </Button>
                       </div>
                     </div>
-                    {/* For brevity, reuse MangaListItem */}
-                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-7  gap-4">
-                      {activeMangaTab === 'reading' && (mangaReading.length>0? mangaReading.map(c=> <MangaListItem key={c.id} item={c}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                      {activeMangaTab === 'completed' && (mangaCompleted.length>0? mangaCompleted.map(c=> <MangaListItem key={c.id} item={c}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
-                      {activeMangaTab === 'planToRead' && (mangaPlanToRead.length>0? mangaPlanToRead.map(c=> <MangaListItem key={c.id} item={c}/>):<div className="col-span-full text-center py-10 text-gray-400">ცარიელია</div>)}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                      {activeMangaTab === 'reading' && (mangaReading.length>0? mangaReading.map(c=> <ContentCard key={c.id} item={c}/>):<div className="col-span-full text-center py-16 text-gray-400"><Book className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                      {activeMangaTab === 'completed' && (mangaCompleted.length>0? mangaCompleted.map(c=> <ContentCard key={c.id} item={c}/>):<div className="col-span-full text-center py-16 text-gray-400"><Book className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
+                      {activeMangaTab === 'planToRead' && (mangaPlanToRead.length>0? mangaPlanToRead.map(c=> <ContentCard key={c.id} item={c}/>):<div className="col-span-full text-center py-16 text-gray-400"><Book className="h-12 w-12 mx-auto mb-4 opacity-50" /><p>ცარიელია</p></div>)}
                     </div>
                   </div>
                 </TabsContent>
 
                 {/* Activity Tab */}
                 <TabsContent value="activity">
-                  <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6">
-                    <h2 className="text-xl font-bold mb-4">ბოლო აქტივობა</h2>
+                  <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-blue-400" />
+                      ბოლო აქტივობა
+                    </h2>
                     <div className="space-y-4">
                       {activities.length > 0 ? (
                         activities.map((activity, idx) => (
                           <ActivityItemDisplay key={`${activity.id}-${idx}`} type={activity.type} action={activity.action} title={activity.contentTitle} details={activity.details} time={getTimeAgo(new Date(activity.timestamp))} />
                         ))
                       ) : (
-                        <div className="text-center py-10 text-gray-400">აქტივობა არ მოიძებნა</div>
+                        <div className="text-center py-16 text-gray-400">
+                          <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>აქტივობა არ მოიძებნა</p>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -968,26 +1058,32 @@ export default function ProfilePage() {
                 {/* History Tab - only for own profile */}
                 {isOwnProfile && (
                   <TabsContent value="history">
-                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-lg p-6">
-                      <h2 className="text-xl font-bold mb-4">ბოლო წაკითხვები</h2>
+                    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl p-6 border border-gray-800">
+                      <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                        <History className="h-5 w-5 text-orange-400" />
+                        ბოლო წაკითხვები
+                      </h2>
                       {recentReads.length > 0 ? (
                         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                           {recentReads.map((item, idx) => (
-                            <div key={`${item.mangaId}-${idx}`} className="flex items-start gap-4 p-3 bg-gray-800/50 rounded-lg">
-                              <div className="w-16 h-24 flex-shrink-0 overflow-hidden rounded">
+                            <div key={`${item.mangaId}-${idx}`} className="flex items-start gap-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-gray-600/50 transition-all">
+                              <div className="w-16 h-24 flex-shrink-0 overflow-hidden rounded-lg">
                                 <ImageSkeleton src={item.mangaThumbnail || '/placeholder.svg'} alt={item.mangaTitle} className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1">
-                                <div className="font-semibold text-sm mb-0.5 line-clamp-2">{item.mangaTitle}</div>
-                                <div className="text-xs text-gray-400 mb-1">თავი {item.chapterNumber}: {item.chapterTitle}</div>
-                                <Progress value={Math.round((item.currentPage / Math.max(1, item.totalPages)) * 100)} className="h-1 mb-1" />
+                                <div className="font-semibold text-sm mb-1 line-clamp-2">{item.mangaTitle}</div>
+                                <div className="text-xs text-gray-400 mb-2">თავი {item.chapterNumber}: {item.chapterTitle}</div>
+                                <Progress value={Math.round((item.currentPage / Math.max(1, item.totalPages)) * 100)} className="h-2 mb-2" />
                                 <div className="text-xs text-gray-500">{getTimeAgo(new Date(item.lastRead))}</div>
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-10 text-gray-400">ისტორია ცარიელია</div>
+                        <div className="text-center py-16 text-gray-400">
+                          <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p>ისტორია ცარიელია</p>
+                        </div>
                       )}
                     </div>
                   </TabsContent>
@@ -996,8 +1092,10 @@ export default function ProfilePage() {
             </div>
           </>
         ) : (
-          <div className="container mx-auto px-4 py-20 text-center text-gray-400">
-            ეს პროფილი არის დაპრივატებული
+          <div className="container mx-auto px-6 py-20 text-center text-gray-400">
+            <User2 className="h-16 w-16 mx-auto mb-6 opacity-50" />
+            <h2 className="text-xl font-semibold mb-2">ეს პროფილი არის დაპრივატებული</h2>
+            <p>ამ მომხმარებლის პროფილის სანახავად თქვენ უნდა იყოთ მეგობრები.</p>
           </div>
         )}
 
@@ -1013,18 +1111,6 @@ export default function ProfilePage() {
           onClose={() => setShowBannerUpload(false)}
         />
       )}
-    </div>
-  )
-}
-
-// Helper components (StatCard, AnimeListItem, MangaListItem, ActivityItemDisplay, Check)
-// Enhance StatCard styling
-function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
-  return (
-    <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/70 rounded-lg p-4 text-center border border-gray-700/50 transition-all hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-900/30">
-      <div className="flex justify-center items-center mb-2 text-gray-400">{icon}</div>
-      <div className="text-2xl font-semibold text-white">{value !== undefined ? value : '-'}</div>
-      <div className="text-xs text-gray-400 mt-1">{label}</div>
     </div>
   )
 }

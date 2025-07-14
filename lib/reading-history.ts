@@ -51,45 +51,81 @@ async function getCurrentUserIdAsync(): Promise<string | null> {
 /**
  * Upsert a reading-progress row to Supabase. Runs in the background – UI never awaits it.
  */
-async function syncProgressToSupabase(progress: ReadingProgress) {
-  const userId = await getCurrentUserIdAsync()
-  if (!userId) return // Not logged-in; nothing to sync
+async function syncProgressToSupabase(progress: ReadingProgress): Promise<void> {
+  try {
+    const { data: session } = await supabase.auth.getSession();
+    const userId = session.session?.user.id;
+    if (!userId) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('No user session, skipping Supabase sync');
+      }
+      return;
+    }
 
-  // Add retry with backoff
-  let retries = 0;
-  const maxRetries = 3;
-  while (retries < maxRetries) {
-    try {
-      const { error } = await supabase
-        .from(READING_HISTORY_TABLE)
-        .upsert(
-          {
-            user_id: userId,
-            manga_id: progress.mangaId,
-            chapter_id: progress.chapterId,
-            chapter_number: progress.chapterNumber,
-            chapter_title: progress.chapterTitle,
-            current_page: progress.currentPage,
-            total_pages: progress.totalPages,
-            last_read: new Date(progress.lastRead).toISOString(),
-            manga_title: progress.mangaTitle,
-            manga_thumbnail: progress.mangaThumbnail,
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,manga_id,chapter_id',
+    // Skip syncing for external chapters (e.g., MangaDx) that don't exist in
+    // our local `chapters` table. This prevents foreign-key violations.
+    if (!progress.chapterId || progress.chapterId.length !== 36) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Skipping Supabase sync for external chapter:', progress.chapterId);
+      }
+      return;
+    }
+
+    // Build a minimal payload to reduce chances of column errors
+    const payload = {
+      user_id: userId,
+      manga_id: progress.mangaId,
+      chapter_id: progress.chapterId,
+      current_page: progress.currentPage,
+      total_pages: progress.totalPages,
+      updated_at: new Date().toISOString(),
+      last_read: new Date(progress.lastRead).toISOString(),
+    };
+
+    // Add retry with exponential backoff
+    let retries = 0;
+    const maxRetries = 2; // Reduced retries for faster feedback
+    
+    while (retries < maxRetries) {
+      try {
+        const { error } = await supabase
+          .from(READING_HISTORY_TABLE)
+          .upsert(payload, { onConflict: 'user_id,manga_id,chapter_id' });
+
+        if (!error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('✅ Progress synced to Supabase successfully');
           }
-        )
+          return; // Success
+        }
 
-      if (error) throw error;
-      return; // Success
-    } catch (error) {
-      console.error('Sync failed:', error);
-      retries++;
-      await new Promise(resolve => setTimeout(resolve, 1000 * retries)); // Backoff
+        // Ignore specific expected errors silently
+        if (error.code === '23503' || error.code === '409' || error.code === '42703') {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Ignoring expected Supabase error:', error.code);
+          }
+          return; // Consider sync successful
+        }
+
+        // For other errors, retry
+        throw error;
+        
+      } catch (error: any) {
+        retries++;
+        if (retries >= maxRetries) {
+          throw error; // Final failure
+        }
+        
+        // Exponential backoff: 500ms, 1000ms
+        await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, retries - 1)));
+      }
+    }
+  } catch (error) {
+    // Log error but don't throw - this is fire-and-forget
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Failed to sync progress to Supabase after retries:', error);
     }
   }
-  console.error('Max retries reached for sync');
 }
 
 // Get all reading history
@@ -122,22 +158,46 @@ export function updateReadingProgress(progress: ReadingProgress): void {
   if (typeof window === "undefined") return;
   
   try {
+    // Validate the progress data
+    if (!progress.mangaId || !progress.chapterId || progress.currentPage < 0 || progress.totalPages <= 0) {
+      console.warn("Invalid progress data:", progress);
+      return;
+    }
+
+    // Ensure currentPage doesn't exceed totalPages
+    const validatedProgress = {
+      ...progress,
+      currentPage: Math.min(progress.currentPage, progress.totalPages - 1),
+    };
+
     const history = getReadingHistory();
     
-    // Find and remove existing entry for this manga
-    const filteredHistory = history.filter(item => item.mangaId !== progress.mangaId);
+    // Find and remove existing entry for this specific chapter
+    const filteredHistory = history.filter(
+      item => !(item.mangaId === validatedProgress.mangaId && item.chapterId === validatedProgress.chapterId)
+    );
     
     // Add the new progress to the beginning (most recent)
-    const updatedHistory = [progress, ...filteredHistory];
+    const updatedHistory = [validatedProgress, ...filteredHistory];
     
-    // Keep only the 50 most recent entries
-    const limitedHistory = updatedHistory.slice(0, 50);
+    // Keep only the 100 most recent entries (increased from 50)
+    const limitedHistory = updatedHistory.slice(0, 100);
     
     // Save to localStorage
     localStorage.setItem(READING_HISTORY_KEY, JSON.stringify(limitedHistory));
 
-    // Fire-and-forget Supabase sync
-    syncProgressToSupabase(progress);
+    // Debug logging for long strip mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📖 Reading progress updated: ${validatedProgress.mangaTitle} - Chapter ${validatedProgress.chapterNumber}, Page ${validatedProgress.currentPage + 1}/${validatedProgress.totalPages}`);
+    }
+
+    // Fire-and-forget Supabase sync with improved error handling
+    syncProgressToSupabase(validatedProgress).catch(error => {
+      // Silent fail for sync, but log in development
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to sync progress to Supabase:', error);
+      }
+    });
   } catch (error) {
     console.error("Failed to update reading history:", error);
   }
@@ -226,18 +286,16 @@ export function getMangaTotalProgress(mangaId: string, chapterList: any[]): numb
     const mangaEntries = history.filter(item => item.mangaId === mangaId);
     
     if (mangaEntries.length === 0) return 0;
-    
-    // Find the furthest read chapter
-    const latestEntry = mangaEntries.reduce((latest, entry) => {
-      if (!latest) return entry;
-      
+
+    // Find the furthest read chapter (use the first entry as initial value to satisfy TS types)
+    const latestEntry = mangaEntries.reduce<ReadingProgress>((latest, entry) => {
       // Compare chapter numbers
       if (entry.chapterNumber > latest.chapterNumber) return entry;
       if (entry.chapterNumber < latest.chapterNumber) return latest;
       
       // If same chapter, compare page progress
       return entry.currentPage > latest.currentPage ? entry : latest;
-    }, null);
+    }, mangaEntries[0]);
     
     if (!latestEntry) return 0;
     

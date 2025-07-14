@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2 } from 'lucide-react';
+import { Loader2, User, Calendar, Lock, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Controller } from 'react-hook-form';
@@ -80,43 +80,26 @@ export function ProfileForm({ initialData, userId, onSuccess }: ProfileFormProps
 
   const handleAvatarUpdate = (newAvatarUrl: string) => {
     setCurrentAvatarUrl(newAvatarUrl);
-    // Optionally, trigger a save of just the avatar, or let the main form save it.
-    // For now, we just update the display and the main form will save everything if other fields are dirty.
-    // If we want to save avatar immediately, we'd call updateUserProfile here.
-    // We also need to make the form dirty if only avatar changed and user wants to save that.
-    // A simple way: call reset with the new avatar url if we consider it part of the form data for dirtiness.
-    // Or, handle avatar saving entirely within the AvatarUploaderComponent.
     toast.info("Avatar preview updated. Save changes to apply.");
   };
 
   const onSubmit: SubmitHandler<ProfileFormData> = async (data) => {
     setIsSubmitting(true);
     try {
-      // The avatar_url is now updated directly by AvatarUploader calling updateUserProfile.
-      // So, we don't strictly need to send currentAvatarUrl from here unless we change that logic.
-      // However, sending all fields from the form is fine.
       const dataToSend = { 
         ...data, 
         is_public: !!data.is_public,
         birth_date: data.birth_date ? data.birth_date.toISOString().split('T')[0] : null,
-        // If AvatarUploader only updates its preview and expects this form to save:
-        // avatar_url: currentAvatarUrl 
       };
-      
-      // If AvatarUploader already saved the avatar, this call will just update other fields.
-      // If only avatar changed and was saved by uploader, isDirty might be false here.
-      // We need to ensure this save button becomes active if avatar changed.
-      // For now, assume if other fields are dirty, they get saved.
-      // If only avatar changed, AvatarUploader already saved it.
 
       const { success, error } = await updateUserProfile(userId, dataToSend);
 
       if (success) {
         toast.success("პროფილი წარმატებით განახლდა!");
         if (onSuccess) {
-          onSuccess(dataToSend);
+          onSuccess(data);
         }
-        reset(dataToSend);
+        reset(data);
       } else {
         toast.error(error?.message || "პროფილის განახლება ვერ შესრულდა.");
       }
@@ -129,127 +112,224 @@ export function ProfileForm({ initialData, userId, onSuccess }: ProfileFormProps
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 max-w-2xl md:max-h-[80vh] overflow-y-auto pr-2">
-      <div className="space-y-2">
-        <Label>პროფილის სურათი</Label>
-        <AvatarUploader 
-            userId={userId} 
-            currentAvatarUrl={currentAvatarUrl} 
-            onAvatarUpdate={handleAvatarUpdate} 
-            usernameInitial={initialData.username?.[0]?.toUpperCase() || '?'}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* First Name */}
-        <div className="space-y-2">
-          <Label htmlFor="first_name">სახელი</Label>
-          <Input 
-            id="first_name"
-            {...register("first_name")}
-            className="bg-black/30 border-white/10" 
-            placeholder="მაგ: გიორგი"
-          />
-          {errors.first_name && <p className="text-sm text-red-500">{errors.first_name.message}</p>}
-        </div>
-
-        {/* Last Name */} 
-        <div className="space-y-2">
-          <Label htmlFor="last_name">გვარი</Label>
-          <Input 
-            id="last_name"
-            {...register("last_name")}
-            className="bg-black/30 border-white/10" 
-            placeholder="მაგ: ბერიძე"
-          />
-          {errors.last_name && <p className="text-sm text-red-500">{errors.last_name.message}</p>}
+    <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden">
+      {/* Header */}
+      <div className="p-6 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-500/20 rounded-lg">
+            <Edit3 className="h-5 w-5 text-purple-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">პროფილის რედაქტირება</h3>
+            <p className="text-sm text-gray-400">განაახლეთ თქვენი პირადი ინფორმაცია</p>
+          </div>
         </div>
       </div>
 
-      {/* Username */} 
-      <div className="space-y-2">
-        <Label htmlFor="username">მომხმარებლის სახელი</Label>
-        <Input 
-          id="username"
-          {...register("username")}
-          className="bg-black/30 border-white/10" 
-        />
-        {errors.username && <p className="text-sm text-red-500">{errors.username.message}</p>}
-      </div>
-
-      {/* Bio */} 
-      <div className="space-y-2">
-        <Label htmlFor="bio">ბიო</Label>
-        <Textarea 
-          id="bio"
-          {...register("bio")}
-          placeholder="მოგვიყევით ცოტა თქვენს შესახებ..."
-          rows={4}
-          className="bg-black/30 border-white/10 resize-none" 
-        />
-        {errors.bio && <p className="text-sm text-red-500">{errors.bio.message}</p>}
-      </div>
-
-      {/* Birth Date */}
-      <div className="space-y-2">
-        <Label htmlFor="birth_date">დაბადების თარიღი</Label>
-        <Controller
-          name="birth_date"
-          control={control}
-          render={({ field }) => (
-            <Input
-              type="date"
-              id="birth_date"
-              value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-              className="bg-black/30 border-white/10"
-              max={new Date().toISOString().split('T')[0]}
+      <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+        {/* Avatar Section */}
+        <div className="bg-gray-800/30 rounded-lg p-6 border border-gray-700/50">
+          <div className="flex items-center gap-4">
+            <div className="p-2 bg-blue-500/20 rounded-lg">
+              <User className="h-4 w-4 text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <Label className="text-base font-medium text-white">პროფილის სურათი</Label>
+              <p className="text-sm text-gray-400 mt-1">ატვირთეთ თქვენი პროფილის სურათი</p>
+            </div>
+          </div>
+          <div className="mt-4">
+            <AvatarUploader 
+              userId={userId} 
+              currentAvatarUrl={currentAvatarUrl} 
+              onAvatarUpdate={handleAvatarUpdate} 
+              usernameInitial={initialData.username?.[0]?.toUpperCase() || '?'}
             />
-          )}
-        />
-        {errors.birth_date && <p className="text-sm text-red-500">{errors.birth_date.message}</p>}
-      </div>
+          </div>
+        </div>
 
-      {/* Public Profile Toggle */}
-      <div className="space-y-2 border-t border-white/10 pt-6">
-        <Label htmlFor="is_public" className="text-base font-medium">პროფილის კონფიდენციალურობა</Label>
-        <div className="flex items-center space-x-3 rounded-md border border-input bg-black/30 p-4">
+        {/* Personal Information */}
+        <div className="bg-gray-800/30 rounded-lg p-6 border border-gray-700/50">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-2 bg-green-500/20 rounded-lg">
+              <User className="h-4 w-4 text-green-400" />
+            </div>
+            <div>
+              <h4 className="text-base font-medium text-white">პირადი ინფორმაცია</h4>
+              <p className="text-sm text-gray-400">თქვენი ძირითადი მონაცემები</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* First Name */}
+            <div className="space-y-2">
+              <Label htmlFor="first_name" className="text-sm font-medium text-gray-300">
+                სახელი
+              </Label>
+              <Input 
+                id="first_name"
+                {...register("first_name")}
+                className="bg-gray-800/50 border-gray-600 text-white placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500/20 transition-all" 
+                placeholder="მაგ: გიორგი"
+              />
+              {errors.first_name && (
+                <p className="text-sm text-red-400 flex items-center gap-2">
+                  <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                  {errors.first_name.message}
+                </p>
+              )}
+            </div>
+
+            {/* Last Name */} 
+            <div className="space-y-2">
+              <Label htmlFor="last_name" className="text-sm font-medium text-gray-300">
+                გვარი
+              </Label>
+              <Input 
+                id="last_name"
+                {...register("last_name")}
+                className="bg-gray-800/50 border-gray-600 text-white placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500/20 transition-all" 
+                placeholder="მაგ: ბერიძე"
+              />
+              {errors.last_name && (
+                <p className="text-sm text-red-400 flex items-center gap-2">
+                  <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                  {errors.last_name.message}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Username */} 
+          <div className="space-y-2 mt-6">
+            <Label htmlFor="username" className="text-sm font-medium text-gray-300">
+              მომხმარებლის სახელი
+            </Label>
+            <Input 
+              id="username"
+              {...register("username")}
+              className="bg-gray-800/50 border-gray-600 text-white placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500/20 transition-all" 
+            />
+            {errors.username && (
+              <p className="text-sm text-red-400 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                {errors.username.message}
+              </p>
+            )}
+          </div>
+
+          {/* Bio */} 
+          <div className="space-y-2 mt-6">
+            <Label htmlFor="bio" className="text-sm font-medium text-gray-300">
+              ბიოგრაფია
+            </Label>
+            <Textarea 
+              id="bio"
+              {...register("bio")}
+              placeholder="მოგვიყევით ცოტა თქვენს შესახებ..."
+              rows={4}
+              className="bg-gray-800/50 border-gray-600 text-white placeholder:text-gray-500 focus:border-purple-500 focus:ring-purple-500/20 transition-all resize-none" 
+            />
+            {errors.bio && (
+              <p className="text-sm text-red-400 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                {errors.bio.message}
+              </p>
+            )}
+          </div>
+
+          {/* Birth Date */}
+          <div className="space-y-2 mt-6">
+            <Label htmlFor="birth_date" className="text-sm font-medium text-gray-300 flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-gray-400" />
+              დაბადების თარიღი
+            </Label>
+            <Controller
+              name="birth_date"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  type="date"
+                  id="birth_date"
+                  value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                  onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
+                  className="bg-gray-800/50 border-gray-600 text-white focus:border-purple-500 focus:ring-purple-500/20 transition-all"
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              )}
+            />
+            {errors.birth_date && (
+              <p className="text-sm text-red-400 flex items-center gap-2">
+                <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+                {errors.birth_date.message}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Privacy Settings */}
+        <div className="bg-gray-800/30 rounded-lg p-6 border border-gray-700/50">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-2 bg-orange-500/20 rounded-lg">
+              <Lock className="h-4 w-4 text-orange-400" />
+            </div>
+            <div>
+              <h4 className="text-base font-medium text-white">კონფიდენციალურობა</h4>
+              <p className="text-sm text-gray-400">თქვენი პროფილის ხილვადობის პარამეტრები</p>
+            </div>
+          </div>
+
           <Controller
             name="is_public"
             control={control}
             render={({ field }) => (
-              <Switch
-                id="is_public"
-                checked={field.value}
-                onCheckedChange={field.onChange}
-                aria-readonly
-              />
+              <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg border border-gray-600/50">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      id="is_public"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    <div>
+                      <Label htmlFor="is_public" className="text-sm font-medium text-white cursor-pointer">
+                        საჯარო პროფილი
+                      </Label>
+                      <p className="text-xs text-gray-400 mt-1">
+                        სხვა მომხმარებლებს შეეძლებათ თქვენი პროფილის გვერდის, ბიბლიოთეკის და აქტივობის ნახვა.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           />
-          <div className="flex flex-col">
-            <Label htmlFor="is_public" className="cursor-pointer">საჯარო პროფილი</Label>
-            <p className="text-xs text-gray-400">
-              სხვა მომხმარებლებს შეეძლებათ თქვენი პროფილის გვერდის, ბიბლიოთეკის და აქტივობის ნახვა.
+          {errors.is_public && (
+            <p className="text-sm text-red-400 flex items-center gap-2 mt-2">
+              <div className="w-1 h-1 bg-red-400 rounded-full"></div>
+              {errors.is_public.message}
             </p>
-          </div>
-        </div>
-        {errors.is_public && <p className="text-sm text-red-500">{errors.is_public.message}</p>}
-      </div>
-
-      {/* Submit Button */} 
-      <div className="flex justify-end">
-        <Button 
-          type="submit" 
-          disabled={isSubmitting || !isDirty} // Disable if submitting or form hasn't changed
-          className="bg-purple-600 hover:bg-purple-700 min-w-[100px]"
-        >
-          {isSubmitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "ცვლილებების შენახვა"
           )}
-        </Button>
-      </div>
-    </form>
+        </div>
+
+        {/* Submit Button */} 
+        <div className="flex justify-end pt-4 border-t border-gray-800">
+          <Button 
+            type="submit" 
+            disabled={isSubmitting || !isDirty}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 px-8 py-2.5 font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>შენახვა...</span>
+              </div>
+            ) : (
+              "ცვლილებების შენახვა"
+            )}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 } 

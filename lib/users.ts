@@ -17,6 +17,7 @@ export interface UserProfile {
   is_public?: boolean;
   birth_date?: string | null; // Added from profile page
   location?: string | null;   // Added from profile page
+  preferred_language?: 'ge' | 'en'; // New: language preference
   has_completed_onboarding?: boolean;
   // Notification preferences
   email_notifications?: boolean;
@@ -89,30 +90,59 @@ export async function updateUserProfile(userId: string, profileData: Partial<Use
   if (!userId) return { success: false, error: { message: 'User ID required' } };
 
   try {
-    // Add updated_at timestamp
-    const dataToUpdate = {
+    // Check if profile exists
+    const { data: existing, error: checkError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking profile existence:', checkError);
+      return { success: false, error: checkError };
+    }
+
+    const dataToSave = {
       ...profileData,
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(dataToUpdate)
-      .eq('id', userId);
-
-    if (error) {
-      console.error('Error updating profile:', error);
-      // Handle specific errors like unique username violation
-      if (error.code === '23505' && error.message.includes('profiles_username_key')) {
-        return { success: false, error: { message: 'Username already taken.' } };
-      }
-      return { success: false, error };
+    let result;
+    if (!existing) {
+      // Insert new profile
+      console.log('Profile does not exist, inserting new one');
+      const insertData = {
+        id: userId,
+        ...dataToSave,
+        // Add defaults if needed, e.g. username: 'user_' + userId.slice(0,8),
+      };
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert(insertData)
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
+    } else {
+      // Update existing
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(dataToSave)
+        .eq('id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
     }
 
-    console.log("Profile updated successfully for user:", userId);
+    console.log('Profile operation successful');
     return { success: true };
   } catch (err) {
-    console.error("Unexpected error updating profile:", err);
+    console.error('Error in updateUserProfile:', err);
+    // Handle unique constraint violation for username
+    if ((err as any).code === '23505' && (err as any).message?.includes('profiles_username_key')) {
+      return { success: false, error: { message: 'Username already taken.' } };
+    }
     return { success: false, error: err };
   }
 }

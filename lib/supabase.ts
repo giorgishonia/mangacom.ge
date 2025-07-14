@@ -8,6 +8,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase URL or Anon Key is missing. Please check your environment variables.')
 }
 
+// Toggle verbose logging for Supabase client
+const SUPABASE_DEBUG = false;
+
 // Create a single supabase client for interacting with your database
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -27,7 +30,8 @@ export const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
-    detectSessionInUrl: false
+    detectSessionInUrl: false,
+    storageKey: 'SupabasePublicAuth',
   },
   global: {
     fetch: fetch
@@ -50,7 +54,10 @@ const checkSupabaseConnection = async () => {
       return false
     }
     
+    // Connection successful – debug log removed for cleaner console
+    if (SUPABASE_DEBUG) {
     console.log('Successfully connected to Supabase')
+    }
     return true
   } catch (err) {
     console.error('Unexpected error checking Supabase connection:', err)

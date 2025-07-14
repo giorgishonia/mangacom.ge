@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Calendar, Clock, BookOpen, Bug, Lightbulb, MessageSquare } from "lucide-react";
+import { ArrowUp, ArrowDown, Calendar, Clock, BookOpen, Bug, Lightbulb, MessageSquare } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
@@ -30,11 +30,17 @@ interface SuggestionCardProps {
     };
   };
   onVote: () => void;
+  downvotes: number;
+  userHasDownvoted: boolean;
+  onDownvote: () => void;
 }
 
 export default function SuggestionCard({
   suggestion,
   onVote,
+  downvotes,
+  userHasDownvoted,
+  onDownvote,
 }: SuggestionCardProps) {
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -80,8 +86,9 @@ export default function SuggestionCard({
       transition={{ duration: 0.3 }}
     >
       <div className="flex gap-4">
-        {/* Vote button */}
-        <div className="flex flex-col items-center">
+        {/* Votes */}
+        <div className="flex flex-col items-center gap-2">
+          {/* Upvote */}
           <motion.button
             className={`vote-button p-1.5 rounded-lg flex flex-col items-center gap-1 ${
               suggestion.userHasVoted
@@ -97,6 +104,23 @@ export default function SuggestionCard({
               }`}
             />
             <span className="text-sm font-medium">{suggestion.votes}</span>
+          </motion.button>
+          {/* Downvote */}
+          <motion.button
+            className={`vote-button p-1.5 rounded-lg flex flex-col items-center gap-1 ${
+              userHasDownvoted
+                ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                : "bg-black/20 hover:bg-black/30 text-white/60 hover:text-white border border-white/5"
+            }`}
+            onClick={onDownvote}
+            whileTap={{ scale: 0.95 }}
+          >
+            <ArrowDown
+              className={`h-4 w-4 ${
+                userHasDownvoted ? "text-red-400" : "text-white/60"
+              }`}
+            />
+            <span className="text-sm font-medium">{downvotes}</span>
           </motion.button>
         </div>
 

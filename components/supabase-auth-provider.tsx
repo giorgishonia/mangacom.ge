@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { Session, User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 import { syncUserAfterLogin } from "@/lib/auth"
-import { getProfileForUser, UserProfile } from "@/lib/users"
+import { getProfileForUser, UserProfile, updateUserProfile as updateUserProfileApi } from "@/lib/users"
 
 type AuthContextType = {
   user: User | null
@@ -18,6 +18,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, username: string) => Promise<{ error: any; success: boolean }>
   signOut: () => Promise<void>
   refreshUserProfile: () => Promise<void>
+  updateUserProfile: (userId: string, data: Partial<UserProfile>) => Promise<{ success: boolean; error?: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -106,6 +107,14 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       console.log("No user to refresh profile for or user.id is invalid.")
     }
   }
+
+  const updateUserProfile = async (userId: string, data: Partial<UserProfile>) => {
+    const result = await updateUserProfileApi(userId, data);
+    if (result.success) {
+      await refreshUserProfile();
+    }
+    return result;
+  };
 
   // Initialize the auth state and listen for changes
   useEffect(() => {
@@ -270,6 +279,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     signUp,
     signOut,
     refreshUserProfile,
+    updateUserProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

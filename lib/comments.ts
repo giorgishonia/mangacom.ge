@@ -2,6 +2,16 @@ import { supabase } from './supabase'
 import { v5 as uuidv5 } from 'uuid'
 import { createClient } from '@supabase/supabase-js'
 import { v4 as uuidv4 } from 'uuid'
+import { createNotification, NotificationType } from "@/lib/notifications";
+import { getProfile } from "@/lib/user";
+
+// Silence verbose logging from comments module unless explicitly enabled
+const COMMENTS_DEBUG = false;
+const commentsOriginalLog = console.log;
+if (!COMMENTS_DEBUG) {
+  // eslint-disable-next-line no-console
+  console.log = (..._args: any[]) => {};
+}
 
 // Create a service role client that can bypass RLS
 const supabaseAdmin = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY 
@@ -33,21 +43,23 @@ function ensureUUID(id: string): string {
 
 // Helper function to get the correct avatar URL from Supabase
 export function getSupabaseAvatarUrl(
-  userId: string,
-  providedAvatarUrl: string | null,
+  userId: string | null,
+  providedAvatarUrl: string | null | undefined,
 ): string | null {
+  if (!userId) return null;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+  const avatarUrl = providedAvatarUrl ?? null;
 
   // 1. If profile already stores a full URL, just return it.
-  if (providedAvatarUrl && providedAvatarUrl.trim() !== '') {
+  if (avatarUrl && avatarUrl.trim() !== '') {
     // Already full URL → return directly
-    if (/^https?:\/\//.test(providedAvatarUrl)) {
-      return providedAvatarUrl;
+    if (/^https?:\/\//.test(avatarUrl)) {
+      return avatarUrl;
     }
 
     // If it's a path that includes "public/" or "avatars/public", use storage URL
-    if (providedAvatarUrl.includes('/public/') || providedAvatarUrl.includes('avatars/public')) {
-      return `${supabaseUrl}/storage/v1/object/${providedAvatarUrl.replace(/^\//, '')}`;
+    if (avatarUrl.includes('/public/') || avatarUrl.includes('avatars/public')) {
+      return `${supabaseUrl}/storage/v1/object/${avatarUrl.replace(/^\//, '')}`;
     }
     
     // For private paths, don't attempt to construct URLs that might cause 400 errors
@@ -302,6 +314,52 @@ export async function addComment(
   parentCommentId: string | null = null
 ) {
   try {
+    // ------------------------------------------------------------
+    // CLIENT-SIDE: Use internal API route to avoid RLS 403s
+    // ------------------------------------------------------------
+    if (typeof window !== 'undefined') {
+      try {
+        // Get the current session token to pass to API route
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+
+        // Add authorization header if we have a token
+        if (accessToken) {
+          headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+
+        const res = await fetch('/api/comments', {
+          method: 'POST',
+          headers,
+          credentials: 'include', // Include cookies for authentication
+          body: JSON.stringify({
+            contentId,
+            contentType,
+            text,
+            mediaUrl,
+            parentCommentId,
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok) {
+          return { success: false, error: json.error || 'Failed to add comment' };
+        }
+
+        return { success: true, comment: json.comment };
+      } catch (apiErr) {
+        console.error('Error calling /api/comments:', apiErr);
+        // If API call fails, continue to fallback direct supabase insert (may still error)
+      }
+    }
+
+    // ------------------------------------------------------------
+    // SERVER-SIDE or fallback: Direct Supabase insert
+    // ------------------------------------------------------------
     // Normalize content_type to ensure it matches database constraints
     let normalizedContentType = contentType.toLowerCase().trim();
     
@@ -598,7 +656,7 @@ export async function getAllComments(
     let normalizedContentType = contentType.toLowerCase().trim();
     
     // Log the input content type and normalized content type
-    console.log(`Getting comments with raw content type: "${contentType}", normalized to: "${normalizedContentType}"`);
+    console.log(`Getting comments for contentId: "${contentId}" with content type: "${contentType}", normalized to: "${normalizedContentType}"`);
     
     // First try with uppercase (which is what the database probably expects)
     let normalizedUppercaseType = normalizedContentType.toUpperCase();

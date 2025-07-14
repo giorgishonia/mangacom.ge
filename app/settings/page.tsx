@@ -5,23 +5,27 @@ import { useRouter } from 'next/navigation';
 import { Loader2, User, Palette, Bell } from 'lucide-react';
 import { AppSidebar } from '@/components/app-sidebar';
 import { useAuth } from '@/components/supabase-auth-provider';
+import { useLanguage } from '@/hooks/use-preferred-language';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProfileForm } from '@/components/settings/profile-form';
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
 import { toast } from 'sonner';
 import { NotificationSettings } from '@/components/settings/notification-settings';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, profile, isLoading: isAuthLoading, session } = useAuth();
+  const { user, profile, isLoading: isAuthLoading, session, updateUserProfile } = useAuth();
+  const { language, t } = useLanguage();
 
   useEffect(() => {
     // Redirect if not logged in after auth check is complete
     if (!isAuthLoading && !user) {
-      toast.error("Please log in to access settings.");
+      toast.error(t('loginRequired'));
       router.push('/login');
     }
-  }, [user, isAuthLoading, router]);
+  }, [user, isAuthLoading, router, t]);
 
   // Show loading spinner if auth/profile data is still loading
   if (isAuthLoading) {
@@ -46,38 +50,53 @@ export default function SettingsPage() {
        <>
          <AppSidebar />
          <div className="container mx-auto px-4 py-8 md:pl-24">
-            <h1 className="text-3xl font-bold mb-8">Settings</h1>
-            <p className='text-red-500'>Error: Could not load your profile data. Please try refreshing the page or re-logging in.</p>
+            <h1 className="text-3xl font-bold mb-8">{t('settings')}</h1>
+            <p className='text-red-500'>{t('profileLoadError')}</p>
          </div>
        </>
      );
   }
 
-  const handleProfileUpdate = (updatedProfileData: Partial<typeof profile>) => {
+  const handleProfileUpdate = (updatedProfileData: any) => {
     // The profile in useAuth context should update automatically if ProfileForm calls updateUserProfile
     // which then triggers a re-sync or state update in SupabaseAuthProvider.
     // For now, just a toast message here is fine.
-    toast.success("Profile updated successfully!");
+    toast.success(t('profileUpdated'));
     // Potentially, could force a refresh of the profile from useAuth if needed:
     // refreshAuthProfile(); // Assuming useAuth exposes such a function
+  };
+
+  const [preferredLanguage, setPreferredLanguage] = useState<'ge' | 'en'>(profile?.preferred_language || 'ge');
+
+  const handleLanguageChange = async (value: 'ge' | 'en') => {
+    setPreferredLanguage(value);
+    const { success } = await updateUserProfile(user.id, { preferred_language: value });
+    if (success) {
+      toast.success(t('languageUpdated'));
+    } else {
+      toast.error(t('languageUpdateFailed'));
+    }
   };
 
   return (
     <>
       <AppSidebar />
       <div className="container mx-auto px-4 py-8 md:pl-24">
-        <h1 className="text-3xl font-bold mb-8">Settings</h1>
+        <h1 className="text-3xl font-bold mb-8">{t('settings')}</h1>
 
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="flex flex-wrap gap-2 mb-6">
             <TabsTrigger value="profile">
-              <User className="h-4 w-4 mr-2" /> Profile
+              <User className="h-4 w-4 mr-2" /> {t('profile')}
             </TabsTrigger>
             <TabsTrigger value="appearance">
-              <Palette className="h-4 w-4 mr-2" /> Appearance
+              <Palette className="h-4 w-4 mr-2" /> {t('appearance')}
             </TabsTrigger>
             <TabsTrigger value="notifications">
-              <Bell className="h-4 w-4 mr-2" /> Notifications
+              <Bell className="h-4 w-4 mr-2" /> {t('notifications')}
+            </TabsTrigger>
+            <TabsTrigger value="language">
+              <User className="h-4 w-4 mr-2" /> {t('language')}
             </TabsTrigger>
           </TabsList>
 
@@ -114,7 +133,27 @@ export default function SettingsPage() {
               />
             )}
           </TabsContent>
-          
+          <TabsContent value="language">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">{t('languagePreference')}</h3>
+              <RadioGroup value={preferredLanguage} onValueChange={handleLanguageChange}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="ge" id="ge" />
+                  <Label htmlFor="ge" className="flex items-center gap-2">
+                    <span className="text-lg">🇬🇪</span>
+                    {t('georgian')}
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="en" id="en" />
+                  <Label htmlFor="en" className="flex items-center gap-2">
+                    <span className="text-lg">🇺🇸</span>
+                    {t('english')}
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </>
