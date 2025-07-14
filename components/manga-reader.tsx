@@ -173,12 +173,12 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
       }
       if (!chapter.id) return;
       try {
-        const resp = await fetch(`https://api.mangadex.org/at-home/server/${chapter.id}`);
+        const resp = await fetch(`/api/mangadx/pages?chapterId=${chapter.id}`);
         if (!resp.ok) throw new Error(`MDex at-home error ${resp.status}`);
         const json = await resp.json();
-        const baseUrl = json.baseUrl;
-        const hash = json.chapter.hash;
-        const data: string[] = json.chapter.data || [];
+        const baseUrl = json.data.baseUrl;
+        const hash = json.data.chapter.hash;
+        const data: string[] = json.data.chapter.data || [];
         const urls = data.map(fname => `${baseUrl}/data/${hash}/${fname}`);
         if (isMounted) {
           setPages(urls);

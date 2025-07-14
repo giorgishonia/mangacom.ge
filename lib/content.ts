@@ -785,12 +785,12 @@ export async function getChapters(contentId: string, optionsOrForceRefresh: bool
           const mdId = (mdMeta as any).mangadex_id as string;
 
           try {
-            const url = `https://api.mangadex.org/manga/${mdId}/feed?translatedLanguage[]=en&order[chapter]=asc&limit=${limitEnglish}&offset=${offsetEnglish}`;
+            const url = `/api/mangadx/chapters?mangaId=${mdId}&limit=${limitEnglish}&offset=${offsetEnglish}`;
             const resp = await fetch(url);
 
             if (resp.ok) {
               const json = await resp.json();
-              const mdChaps = json?.data || [];
+              const mdChaps = json?.data?.data || [];
 
               chapters.push(
                 ...mdChaps.map((item: any, idx: number) => {

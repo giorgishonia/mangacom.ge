@@ -907,7 +907,7 @@ const CommentItem = ({
     >
       <div className={cn(
         "absolute inset-0 rounded-lg",
-        comment.user_profile?.vip_status && comment.user_profile?.comment_background_url ? "bg-black/70 backdrop-blur-sm" : ""
+        comment.user_profile?.vip_status && comment.user_profile?.comment_background_url ? "bg-black/70" : ""
       )}></div>
       
       <div className="relative z-10">
