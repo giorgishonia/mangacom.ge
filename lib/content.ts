@@ -785,12 +785,12 @@ export async function getChapters(contentId: string, optionsOrForceRefresh: bool
           const mdId = (mdMeta as any).mangadex_id as string;
 
           try {
-            const url = `/api/mangadex/chapters?mangaId=${mdId}&limit=${limitEnglish}&offset=${offsetEnglish}`;
+            const url = `/api/mangadex/chapters?mangaId=${mdId}&limit=${limitEnglish}&offset=${offsetEnglish}&order[chapter]=asc`;
             const resp = await fetch(url);
 
             if (resp.ok) {
               const json = await resp.json();
-              const mdChaps = json?.data?.data || [];
+              const mdChaps = json?.data || [];
 
               chapters.push(
                 ...mdChaps.map((item: any, idx: number) => {

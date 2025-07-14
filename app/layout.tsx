@@ -81,9 +81,9 @@ export default function RootLayout({
         <SupabaseAuthProvider>
           <UnifiedAuthProvider>
             <LanguageProvider>
-              <MaintenanceRunner />
-              {children}
-              <Toaster richColors position="top-right" theme="dark" />
+            <MaintenanceRunner />
+            {children}
+            <Toaster richColors position="top-right" theme="dark" />
             </LanguageProvider>
           </UnifiedAuthProvider>
         </SupabaseAuthProvider>
