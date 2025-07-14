@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       )
     }
     
-    // Make the request to MangaDx at-home API from the server
+    // Make the request to mangadex at-home API from the server
     const url = `https://api.mangadex.org/at-home/server/${chapterId}`
     
     const response = await fetch(url, {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     })
     
     if (!response.ok) {
-      throw new Error(`MangaDx at-home API error: ${response.status}`)
+      throw new Error(`mangadex at-home API error: ${response.status}`)
     }
     
     const data = await response.json()
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       data: data
     })
   } catch (error) {
-    console.error('MangaDx pages API proxy error:', error)
+    console.error('mangadex pages API proxy error:', error)
     return NextResponse.json(
       { 
         success: false, 

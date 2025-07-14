@@ -62,7 +62,7 @@ async function syncProgressToSupabase(progress: ReadingProgress): Promise<void> 
       return;
     }
 
-    // Skip syncing for external chapters (e.g., MangaDx) that don't exist in
+    // Skip syncing for external chapters (e.g., mangadex) that don't exist in
     // our local `chapters` table. This prevents foreign-key violations.
     if (!progress.chapterId || progress.chapterId.length !== 36) {
       if (process.env.NODE_ENV === 'development') {

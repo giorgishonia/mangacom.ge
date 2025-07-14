@@ -785,7 +785,7 @@ export async function getChapters(contentId: string, optionsOrForceRefresh: bool
           const mdId = (mdMeta as any).mangadex_id as string;
 
           try {
-            const url = `/api/mangadx/chapters?mangaId=${mdId}&limit=${limitEnglish}&offset=${offsetEnglish}`;
+            const url = `/api/mangadex/chapters?mangaId=${mdId}&limit=${limitEnglish}&offset=${offsetEnglish}`;
             const resp = await fetch(url);
 
             if (resp.ok) {
