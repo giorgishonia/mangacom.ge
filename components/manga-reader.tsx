@@ -173,7 +173,7 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
       }
       if (!chapter.id) return;
       try {
-        const resp = await fetch(`https://api.mangadex.org/at-home/server/${chapter.id}`);
+        const resp = await fetch(`/api/mangadex/pages?chapterId=${chapter.id}`);
         if (!resp.ok) throw new Error(`MDex at-home error ${resp.status}`);
         const json = await resp.json();
         const baseUrl = json.baseUrl;
