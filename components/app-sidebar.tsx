@@ -80,7 +80,7 @@ const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--pri
     <>
       {isActive && (
         <m.div 
-          layoutId="activeTab"
+          layoutId="activeTabBg"
           className="absolute inset-0 bg-white/10 rounded-xl border border-white/5"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
@@ -110,7 +110,7 @@ const SidebarItem = ({ icon, label, isActive, href, accentColor = "hsl(var(--pri
 
       {isActive && (
         <m.div 
-          layoutId="activeTab"
+          layoutId="activeTabIndicator"
           className="absolute left-0 top-0 bottom-0 w-1 bg-[hsl(var(--primary))] rounded-r-full"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: '100%' }}
@@ -564,9 +564,16 @@ export function AppSidebar() {
                     className={cn(
                       "flex items-center py-3 rounded-xl transition-all duration-200 group relative",
                       isExpanded ? "justify-start px-3" : "px-3",
-                      pathname === "/profile" ? "bg-white/10" : "hover:bg-white/5"
+                      pathname === "/profile" ? "" : "hover:bg-white/5"
                     )}
                   >
+                    {pathname === "/profile" && (
+                      <m.div
+                        layoutId="activeTabBg"
+                        className="absolute inset-0 bg-white/10 rounded-xl border border-white/5"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
                     <m.div layout>
                       <Avatar 
                         className={cn(
@@ -589,7 +596,11 @@ export function AppSidebar() {
                     {isExpanded && <m.span layout className="ml-3">პროფილი</m.span>}
                     {pathname === "/profile" && (
                       <m.div 
+                        layoutId="activeTabIndicator"
                         className="absolute left-0 top-0 bottom-0 w-1 bg-[hsl(var(--primary))] rounded-r-full"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: '100%' }}
+                        exit={{ opacity: 0, height: 0 }}
                       />
                     )}
                   </Link>
