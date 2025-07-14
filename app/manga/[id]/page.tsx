@@ -120,13 +120,38 @@ type Emoji = typeof EMOJI_REACTIONS[number]['emoji']; // Define Emoji type
 // Toggle to enable verbose debug logs for this page only
 const DEV_LOG = true;
 
-export default function MangaPage({ params }: { params: { id: string } }) {
+// Helper function to map character data
+const mapCharacters = (data: any) => {
+  if (!data?.characters?.edges) return [];
+
+  const characterRoles = new Map(
+    data.characters.edges.map((edge: any) => [edge.node.id, edge.role])
+  );
+
+  return (
+    data.characters.nodes
+      ?.map((node: any) => ({
+        id: node.id,
+        name: node.name?.full,
+        image: node.image?.large,
+        role: characterRoles.get(node.id) || "BACKGROUND",
+        gender: node.gender,
+        age: node.age,
+      }))
+      .sort((a: any, b: any) => {
+        const roleOrder = { MAIN: 0, SUPPORTING: 1, BACKGROUND: 2 };
+        return (roleOrder[a.role as keyof typeof roleOrder] ?? 3) - (roleOrder[b.role as keyof typeof roleOrder] ?? 3);
+      }) || []
+  );
+};
+
+export default function MangaPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollPosition, setScrollPosition] = useState(0)
-  // Fix for Next.js params access - use React.use() to properly unwrap
-  const unwrappedParams = React.use(params as any) as { id: string }
-  const mangaId = unwrappedParams.id
+  // Fix for Next.js params access - properly unwrap params Promise
+  const resolvedParams = React.use(params)
+  const mangaId = resolvedParams.id
   const [isReaderOpen, setIsReaderOpen] = useState(false)
   const [selectedChapter, setSelectedChapter] = useState(0)
   const [isBookmarked, setIsBookmarked] = useState(false)
@@ -153,6 +178,8 @@ export default function MangaPage({ params }: { params: { id: string } }) {
   // Logo loader overlay states
   const [showLogoLoader, setShowLogoLoader] = useState(true);
   const [logoAnimationDone, setLogoAnimationDone] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingText, setLoadingText] = useState("იტვირთება...");
 
   // --- Character favorites ---
   const [favoriteCharacters, setFavoriteCharacters] = useState<{ [id: string]: boolean }>({});
@@ -160,118 +187,120 @@ export default function MangaPage({ params }: { params: { id: string } }) {
   // Language state
   const [selectedLanguage, setSelectedLanguage] = useState<'ge' | 'en'>('ge');
 
-  // --- Lazy English chapters pagination ---
-  const [englishOffset, setEnglishOffset] = useState(0);
-  const [englishHasMore, setEnglishHasMore] = useState(true);
-  const englishFetchingRef = useRef(false);
-  const englishListRef = useRef<HTMLDivElement>(null);
-  const [englishLoading, setEnglishLoading] = useState(false);
-  const [englishFullLoading, setEnglishFullLoading] = useState(false);
-  // Tracks how many consecutive API pages returned *no new* unique English chapters
-  const englishDuplicateSkipsRef = useRef(0);
+  // --- Bulk English chapters loading ---
+  const [allEnglishChapters, setAllEnglishChapters] = useState<any[]>([]);
+  const [englishLoadingComplete, setEnglishLoadingComplete] = useState(false);
+  const englishLoadingRef = useRef(false);
 
-  const EN_PAGE_SIZE = 20;
+  const BATCH_SIZE = 50; // Load chapters in batches for better performance
 
-  const loadEnglishChapters = useCallback(async () => {
-    if (englishFetchingRef.current || !englishHasMore) {
-      if (DEV_LOG) console.log('loadEnglishChapters: skipping load -', { fetching: englishFetchingRef.current, hasMore: englishHasMore });
-      return;
-    }
-    if (!mangaId) return;
+  // Bulk load all English chapters with progress tracking
+  const loadAllEnglishChapters = useCallback(async () => {
+    if (englishLoadingRef.current || !mangaId) return;
     
-    if (DEV_LOG) console.log('loadEnglishChapters: starting load with offset', englishOffset);
-    englishFetchingRef.current = true;
-    setEnglishLoading(true);
+    englishLoadingRef.current = true;
+    setLoadingText("English თავები იტვირთება...");
     
     try {
-      const result = await getChapters(mangaId, {
-        includeEnglish: true,
-        limitEnglish: EN_PAGE_SIZE,
-        offsetEnglish: englishOffset,
-        includeGeorgian: false,
-      });
-
-      if (result.success) {
-        const newEnglish = (result.chapters || []).filter((c: any) => c.language === 'en');
-        if (DEV_LOG) console.log('loadEnglishChapters: received', newEnglish.length, 'new English chapters');
-
-        setMangaData((prev: any) => {
-          if (!prev) return prev;
-          const existing = prev.chaptersData || [];
-          const merged = [...existing, ...newEnglish];
-          const deduped = Array.from(
-            new Map(merged.map((ch: any) => [`${ch.language}-${ch.number}`, ch])).values()
-          );
-          if (DEV_LOG) console.log('loadEnglishChapters: total chapters after merge', deduped.length);
-          return { ...prev, chaptersData: deduped };
+      let allChapters: any[] = [];
+      let offset = 0;
+      let hasMore = true;
+      let consecutiveEmptyBatches = 0;
+      const maxEmptyBatches = 3;
+      
+      // First, get an estimate of total chapters for better progress tracking
+      setLoadingProgress(5);
+      
+      while (hasMore) {
+        if (DEV_LOG) console.log(`Loading English chapters batch at offset ${offset}`);
+        
+        const result = await getChapters(mangaId, {
+          includeEnglish: true,
+          limitEnglish: BATCH_SIZE,
+          offsetEnglish: offset,
+          includeGeorgian: false,
         });
 
-        if (newEnglish.length === 0) {
-          // Received a page but all chapters were duplicates we've already cached.
-          // Increment the skip counter – after a few consecutive duplicates we assume we've reached the end.
-          englishDuplicateSkipsRef.current += 1;
-
-          if (DEV_LOG) console.log('loadEnglishChapters: duplicate page (no unique chapters). Skip count =', englishDuplicateSkipsRef.current);
-
-          const MAX_DUPLICATE_SKIPS = 4; // allow 4×20 = 80 duplicate rows before giving up
-
-          if (englishDuplicateSkipsRef.current >= MAX_DUPLICATE_SKIPS) {
-            if (DEV_LOG) console.log('loadEnglishChapters: hit duplicate skip threshold – stopping pagination');
-            setEnglishHasMore(false);
+        if (result.success) {
+          const newEnglish = (result.chapters || []).filter((c: any) => c.language === 'en');
+          
+          if (newEnglish.length === 0) {
+            consecutiveEmptyBatches++;
+            if (consecutiveEmptyBatches >= maxEmptyBatches) {
+              if (DEV_LOG) console.log('No more English chapters found after multiple empty batches');
+              hasMore = false;
+            }
           } else {
-            // Still assume there could be more further ahead – advance the offset & try again next scroll
-            setEnglishOffset((off) => off + EN_PAGE_SIZE);
+            consecutiveEmptyBatches = 0;
+            
+            // Filter out duplicates based on chapter number and language
+            const uniqueNew = newEnglish.filter(newChap => 
+              !allChapters.some(existing => 
+                existing.number === newChap.number && existing.language === newChap.language
+              )
+            );
+            
+            allChapters = [...allChapters, ...uniqueNew];
+            
+            // Update progress (estimating based on batches loaded)
+            const progressIncrement = Math.min(15, (uniqueNew.length / BATCH_SIZE) * 15);
+            setLoadingProgress(prev => Math.min(85, prev + progressIncrement));
+            
+            if (DEV_LOG) console.log(`Loaded ${uniqueNew.length} new English chapters. Total: ${allChapters.length}`);
+          }
+          
+          offset += BATCH_SIZE;
+          
+          // Safety break to prevent infinite loops
+          if (offset > 10000) {
+            if (DEV_LOG) console.log('Safety break: offset exceeded 10000');
+            hasMore = false;
           }
         } else {
-          // Got unique chapters → reset duplicate skip counter and continue
-          englishDuplicateSkipsRef.current = 0;
-
-          setEnglishOffset((off) => {
-            const newOffset = off + EN_PAGE_SIZE;
-            if (DEV_LOG) console.log('loadEnglishChapters: advancing offset to', newOffset);
-            return newOffset;
-          });
+          console.error('Failed to load English chapters batch:', result);
+          hasMore = false;
         }
-      } else {
-        console.error('loadEnglishChapters: API call failed', result);
-        setEnglishHasMore(false);
+        
+        // Small delay to prevent overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    } catch (err) {
-      console.error('Failed to load English chapters:', err);
-      setEnglishHasMore(false);
-    } finally {
-      englishFetchingRef.current = false;
-      setEnglishLoading(false);
-    }
-  }, [englishOffset, mangaId, englishHasMore]);
-
-  // Trigger first English fetch when user switches to EN tab
-  useEffect(() => {
-    if (selectedLanguage === 'en' && englishOffset === 0 && englishHasMore) {
-      loadEnglishChapters();
-    }
-  }, [selectedLanguage, englishOffset, englishHasMore, loadEnglishChapters]);
-
-  // Infinite scroll handler for English list
-  const handleEnglishScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.currentTarget;
-    const scrollThreshold = 50; // Reduced threshold for better responsiveness
-    
-    if (DEV_LOG) {
-      console.log('English scroll event:', {
-        scrollTop: target.scrollTop,
-        clientHeight: target.clientHeight,
-        scrollHeight: target.scrollHeight,
-        threshold: scrollThreshold,
-        shouldLoad: target.scrollTop + target.clientHeight >= target.scrollHeight - scrollThreshold
+      
+      if (DEV_LOG) console.log(`Finished loading all English chapters. Total: ${allChapters.length}`);
+      
+      // Sort chapters by number for better organization
+      allChapters.sort((a, b) => a.number - b.number);
+      
+      setAllEnglishChapters(allChapters);
+      setEnglishLoadingComplete(true);
+      setLoadingProgress(90);
+      setLoadingText("დასრულდა...");
+      
+      // Update manga data with all English chapters
+      setMangaData((prev: any) => {
+        if (!prev) return prev;
+        const georgianChapters = (prev.chaptersData || []).filter((c: any) => c.language !== 'en');
+        const allChaptersData = [...georgianChapters, ...allChapters];
+        return { ...prev, chaptersData: allChaptersData };
       });
+      
+      // Final progress update
+      setTimeout(() => {
+        setLoadingProgress(100);
+      }, 300);
+      
+    } catch (error) {
+      console.error('Error loading all English chapters:', error);
+      setEnglishLoadingComplete(true);
+      setLoadingProgress(100);
+      setLoadingText("დასრულდა");
+    } finally {
+      englishLoadingRef.current = false;
     }
-    
-    if (target.scrollTop + target.clientHeight >= target.scrollHeight - scrollThreshold) {
-      if (DEV_LOG) console.log('English scroll triggered, loading more chapters...');
-      loadEnglishChapters();
-    }
-  }, [loadEnglishChapters]);
+  }, [mangaId, setLoadingText, setLoadingProgress, setAllEnglishChapters, setEnglishLoadingComplete, setMangaData]);
+
+  // Remove the old pagination-based loading functions and effects
+  // const loadEnglishChapters = useCallback(async () => { ... }); // REMOVED
+  // const handleEnglishScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => { ... }); // REMOVED
 
   // Keep selectedLanguage in sync with user's profile preference
   useEffect(() => {
@@ -322,12 +351,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     }
   };
 
-  // Hide logo loader once both data is loaded and animation finished
-  useEffect(() => {
-    if (!isLoading && logoAnimationDone) {
-      setShowLogoLoader(false);
-    }
-  }, [isLoading, logoAnimationDone]);
+
 
   // Handle scroll effect for background
   useEffect(() => {
@@ -379,24 +403,42 @@ export default function MangaPage({ params }: { params: { id: string } }) {
   // Define fetchMangaData (modified)
   const fetchMangaData = async () => {
     setIsLoading(true);
+    setLoadingProgress(10);
+    setLoadingText("მთავარი ინფორმაცია იტვირთება...");
+    
     try {
       // Fetch main manga data (existing logic)
       const dbResult = await getContentById(mangaId);
       let fetchedMangaData: any = null;
 
       if (dbResult.success && dbResult.content && dbResult.content.type === 'manga') {
-        const chaptersResult = await getChapters(mangaId, { includeEnglish: false });
-        const chapters = chaptersResult.success ? chaptersResult.chapters : [];
+        setLoadingProgress(25);
+        setLoadingText("ქართული თავები იტვირთება...");
+        
+        const chaptersResult = await getChapters(mangaId, {
+          includeEnglish: false, // Only load Georgian chapters initially
+          includeGeorgian: true,
+          limitEnglish: 0,
+          offsetEnglish: 0,
+        });
+
+        const georgianChapters = (chaptersResult.success && chaptersResult.chapters) || [];
         fetchedMangaData = {
           ...formatDatabaseContent(dbResult.content),
-          chaptersData: chapters
+          chaptersData: georgianChapters
         };
         setIsFromDatabase(true);
+        setLoadingProgress(40);
+
       } else {
+        setLoadingProgress(25);
+        setLoadingText("AniList-დან იტვირთება...");
+        
         try {
           const anilistData = await getMangaById(mangaId);
           fetchedMangaData = anilistData;
           setIsFromDatabase(false);
+          setLoadingProgress(40);
         } catch (anilistError) {
           console.error("Error fetching from AniList:", anilistError);
           // Do not throw, allow page to render not found if mangaData remains null
@@ -407,6 +449,8 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     } catch (error) {
       console.error("Error in fetchMangaData:", error);
       setMangaData(null); // Ensure mangaData is null on critical error
+      setLoadingProgress(100);
+      setLoadingText("შეცდომა");
     } finally {
       setIsLoading(false);
     }
@@ -419,6 +463,34 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mangaId, userId]); // Add userId to refetch reactions when auth state changes
+
+  // Start loading English chapters after main data is loaded
+  useEffect(() => {
+    if (mangaData && !englishLoadingComplete && !englishLoadingRef.current) {
+      // Small delay to ensure smooth UX
+      const timer = setTimeout(() => {
+        loadAllEnglishChapters();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [mangaData, englishLoadingComplete, loadAllEnglishChapters]);
+
+  // Hide logo loader once both data is loaded and all chapters are loaded
+  useEffect(() => {
+    if (!isLoading && loadingProgress >= 100) {
+      setLogoAnimationDone(true);
+    }
+  }, [isLoading, loadingProgress]);
+
+  // Final hide logic for logo loader
+  useEffect(() => {
+    if (!isLoading && logoAnimationDone && loadingProgress >= 100) {
+      const timer = setTimeout(() => {
+        setShowLogoLoader(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, logoAnimationDone, loadingProgress]);
 
   // --- NEW useEffect to increment view count ---
   useEffect(() => {
@@ -751,137 +823,6 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     }
   }, [processedData]);
 
-  function mapCharacters(data: any) {
-    if (!data) {
-      if (DEV_LOG) console.log('No data provided for character mapping');
-      return [];
-    }
-    
-    try {
-      // Check if characters data exists in any expected format
-      if (!data.characters) {
-        if (DEV_LOG) console.log('No characters property in data');
-        
-        // WORKAROUND: Try to extract character data from alternative_titles
-        if (data.alternative_titles && Array.isArray(data.alternative_titles)) {
-          const characterEntries = data.alternative_titles.filter((entry: string) => 
-            typeof entry === 'string' && entry.startsWith('character:')
-          );
-          
-          if (characterEntries.length > 0) {
-            if (DEV_LOG) console.log(`Found ${characterEntries.length} characters in alternative_titles`);
-            const extractedCharacters = characterEntries.map((entry: string) => {
-              // Extract the JSON part after "character:"
-              const jsonStr = entry.substring(10); // 'character:'.length = 10
-              const charData = JSON.parse(jsonStr);
-              if (DEV_LOG) console.log('Extracted character:', charData);
-              return {
-                id: charData.id || `char-${Math.random().toString(36).substring(2, 9)}`,
-                name: charData.name || 'Unknown',
-                image: charData.image || '/placeholder-character.jpg',
-                role: charData.role || 'SUPPORTING',
-                age: charData.age || null,
-                gender: charData.gender || null,
-                voiceActor: null
-              };
-            });
-            if (DEV_LOG) console.log(`Successfully extracted ${extractedCharacters.length} characters`);
-            return extractedCharacters;
-          }
-        }
-        
-        return [];
-      }
-      
-      if (DEV_LOG) console.log('Character data structure:', {
-        hasCharacters: !!data.characters,
-        hasEdges: !!data.characters.edges,
-        edgeCount: data.characters.edges?.length || 0,
-        hasNodes: !!data.characters.nodes,
-        nodeCount: data.characters.nodes?.length || 0
-      });
-
-      // Similar to anime page: Map nodes with roles from edges
-      if (data.characters.nodes && data.characters.nodes.length > 0) {
-        if (DEV_LOG) console.log('Mapping characters from nodes with roles from edges');
-        
-        const mappedChars = data.characters.nodes
-          .filter((node: any) => node?.id && node?.name)
-          .map((char: any) => {
-            // Try to find the role from edges
-            const role = data.characters?.edges?.find((edge: any) => 
-              edge?.node?.id === char.id
-            )?.role || char.role || 'SUPPORTING';
-            
-            return {
-              id: char.id || `char-${Math.random().toString(36).substring(2, 9)}`,
-              name: char.name?.full || 'Unknown',
-              image: char.image?.large || char.image?.medium || '/placeholder-character.jpg',
-              role: role,
-              age: char.age || null,
-              gender: char.gender || null,
-              voiceActor: null
-            };
-          });
-        
-        if (DEV_LOG) console.log(`Mapped ${mappedChars.length} characters from nodes with roles`);
-        return mappedChars;
-      }
-      
-      // Fallback to edges if nodes aren't available
-      if (data.characters.edges && data.characters.edges.length > 0) {
-        if (DEV_LOG) console.log('Mapping characters from edges data');
-        
-        const mappedChars = data.characters.edges
-          .filter((char: any) => char && char.node)
-          .map((char: any) => {
-            const nodeData = char.node;
-            return {
-              id: nodeData.id || `char-${Math.random().toString(36).substring(2, 9)}`,
-              name: nodeData.name?.full || 'Unknown',
-              image: nodeData.image?.large || nodeData.image?.medium || '/placeholder-character.jpg',
-              role: char.role || 'SUPPORTING',
-              age: nodeData.age || null,
-              gender: nodeData.gender || null,
-              voiceActor: null
-            };
-          });
-        
-        if (DEV_LOG) console.log(`Mapped ${mappedChars.length} characters from edges`);
-        return mappedChars;
-      }
-      
-      // Last resort - handle array of character objects (database format)
-      if (Array.isArray(data.characters)) {
-        if (DEV_LOG) console.log('Mapping characters from array data (database format)');
-        
-        const mappedChars = data.characters
-          .filter((char: any) => char)
-          .map((char: any) => {
-            return {
-              id: char.id || `char-${Math.random().toString(36).substring(2, 9)}`,
-              name: char.name || 'Unknown',
-              image: char.image || '/placeholder-character.jpg',
-              role: char.role || 'SUPPORTING',
-              age: char.age || null,
-              gender: char.gender || null,
-              voiceActor: null
-            };
-          });
-        
-        if (DEV_LOG) console.log(`Mapped ${mappedChars.length} characters from array`);
-        return mappedChars;
-      }
-      
-      if (DEV_LOG) console.log('No usable character data found in any expected format');
-      return [];
-    } catch (err) {
-      console.error('Error mapping characters:', err);
-      return [];
-    }
-  }
-
-  // Once processedData is defined, add the URL check effect here
   // Check for resume parameter in URL after processedData is defined
   useEffect(() => {
     if (!resumeHandled && processedData && typeof window !== 'undefined') {
@@ -1166,15 +1107,14 @@ export default function MangaPage({ params }: { params: { id: string } }) {
     console.log('English chapters state:', {
       totalChapters: processedData?.chapterList?.length || 0,
       enChapters: enChapters.length,
-      englishOffset,
-      englishHasMore,
-      englishLoading,
-      englishFetching: englishFetchingRef.current
+      allEnglishChapters: allEnglishChapters.length,
+      englishLoadingComplete,
+      englishLoading: englishLoadingRef.current
     });
   }
 
   const filteredChapters = selectedLanguage === 'ge' ? geChapters : enChapters;
-  const hasEnSupport = englishHasMore || enChapters.length > 0;
+  const hasEnSupport = englishLoadingComplete || allEnglishChapters.length > 0;
 
   return (
     <div className="flex min-h-screen bg-[#070707] text-white antialiased">
@@ -1184,6 +1124,8 @@ export default function MangaPage({ params }: { params: { id: string } }) {
         <LogoLoader
           src={(processedData as any).logo || processedData.coverImage || processedData.bannerImage || '/placeholder.svg'}
           onComplete={() => setLogoAnimationDone(true)}
+          progress={loadingProgress}
+          loadingText={loadingText}
         />
       )}
 
@@ -1696,8 +1638,8 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                       {/* Responsive chapter list - SCROLLABLE CONTAINER */}
                       <Tabs value={selectedLanguage} onValueChange={(value) => setSelectedLanguage(value as 'ge' | 'en')} className="w-full">
                         <TabsList className="mb-4 flex justify-start">
-                          <TabsTrigger value="ge" className="px-4 py-1">ქართული</TabsTrigger>
-                          <TabsTrigger value="en" className={cn(!hasEnSupport && 'opacity-70')} >English</TabsTrigger>
+                          <TabsTrigger value="ge" className="px-4 py-1.5 flex items-center gap-2">🇬🇪 ქართული</TabsTrigger>
+                          <TabsTrigger value="en" className={cn("px-4 py-1.5 flex items-center gap-2", !hasEnSupport && 'opacity-70')} >🇬🇧 English</TabsTrigger>
                         </TabsList>
                         
                         <TabsContent value="ge">
@@ -1780,12 +1722,12 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                           )}
                         </TabsContent>
                         
-                                                <TabsContent value="en">
+                        <TabsContent value="en">
                           {enChapters.length === 0 ? (
-                            englishLoading ? (
+                            !englishLoadingComplete ? (
                               <div className="py-12 flex flex-col items-center justify-center gap-3 text-purple-300">
                                 <Loader2 className="h-6 w-6 animate-spin" />
-                                <span className="text-sm">თავები იტვირთება...</span>
+                                <span className="text-sm">English თავები იტვირთება...</span>
                               </div>
                             ) : (
                               <div className="text-center py-12 border border-dashed border-white/10 rounded-lg bg-black/20 backdrop-blur-sm">
@@ -1794,11 +1736,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                               </div>
                             )
                           ) : (
-                            <div
-                              ref={englishListRef}
-                              onScroll={handleEnglishScroll}
-                              className="space-y-3 max-h-[60vh] overflow-y-auto pr-2"
-                            >
+                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                               {enChapters.map((chapter: any, index: number) => {
                                 const chapterId = chapter.id || `chapter-${chapter.number}`;
                                 const readPercentage = getReadPercentage(mangaId, chapterId);
@@ -1847,7 +1785,7 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                                               {isCurrentlyReading ? "კითხულობ" 
                                                 : readPercentage === 100 ? "დასრულებულია"
                                                 : `${readPercentage}% წაკითხულია`}
-                                            </span>
+                                          </span>
                                         )}
                                         </div>
                                         
@@ -1867,20 +1805,6 @@ export default function MangaPage({ params }: { params: { id: string } }) {
                                   </motion.div>
                                 );
                               })}
-
-                              {/* Loading indicator and end-of-list message */}
-                              {englishLoading && (
-                                <div className="py-4 flex items-center justify-center gap-2 text-purple-300 text-sm">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                  <span>თავები იტვირთება...</span>
-                                </div>
-                              )}
-                              
-                              {!englishHasMore && !englishLoading && enChapters.length > 0 && (
-                                <div className="py-4 text-center text-gray-400 text-sm">
-                                  <span>ყველა English თავი ჩამოიტვირთა</span>
-                                </div>
-                              )}
                             </div>
                           )}
                         </TabsContent>

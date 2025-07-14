@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useMemo } from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion"
@@ -23,7 +23,9 @@ import {
   BookOpen,
   Eye,
   EyeOff,
-  MessageSquare
+  MessageSquare,
+  Loader2,
+  Search
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Progress } from "@/components/ui/progress"
@@ -143,10 +145,25 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
   const [showComments, setShowComments] = useState(false)
   const [showInfoTutorial, setShowInfoTutorial] = useState(false)
+  const [isLoadingPages, setIsLoadingPages] = useState(true);
+  const [pageFetchError, setPageFetchError] = useState<string | null>(null);
+  const [longStripProgress, setLongStripProgress] = useState(0);
   
   const [loadedPages, setLoadedPages] = useState<Record<number, boolean>>({})
   
   const [preloadedImages, setPreloadedImages] = useState<Record<string, boolean>>({})
+
+  const [isMagnifierActive, setIsMagnifierActive] = useState(false);
+  const [magnifierProps, setMagnifierProps] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    bgX: 0,
+    bgY: 0,
+    bgWidth: 0,
+    bgHeight: 0,
+    imageSrc: '',
+  });
 
   const readerRef = useRef<HTMLDivElement>(null)
   const longStripRef = useRef<HTMLDivElement>(null)
@@ -165,34 +182,66 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
   // Fetch mangadex pages for English external chapters
   useEffect(() => {
     let isMounted = true;
+
+    // Reset state when chapter changes
+    setIsLoadingPages(true);
+    setPageFetchError(null);
+    setPages([]); // Clear old pages immediately
+
     async function fetchEnPages() {
-      if (chapter.language !== 'en') return;
-      if (chapter.pages && chapter.pages.length > 0) {
-        setPages(chapter.pages);
+      if (!chapter.id) {
+        if (isMounted) {
+          setPageFetchError("This chapter does not have a valid ID and cannot be loaded.");
+          setIsLoadingPages(false);
+        }
         return;
       }
-      if (!chapter.id) return;
+
       try {
         const resp = await fetch(`/api/mangadex/pages?chapterId=${chapter.id}`);
-        if (!resp.ok) throw new Error(`MDex at-home error ${resp.status}`);
+        if (!resp.ok) {
+          throw new Error(`The page server returned an error: ${resp.status}.`);
+        }
         const json = await resp.json();
+
+        if (json.result === 'error' || !json.baseUrl) {
+          const errorDetail = json.errors?.map((e: any) => e.detail).join(', ') || "No details provided";
+          throw new Error(`MangaDex API error: ${errorDetail}`);
+        }
+
         const baseUrl = json.baseUrl;
         const hash = json.chapter.hash;
         const data: string[] = json.chapter.data || [];
         const urls = data.map(fname => `${baseUrl}/data/${hash}/${fname}`);
         if (isMounted) {
+          if (urls.length === 0) {
+            setPageFetchError("The chapter was found, but it contains no pages.");
+          }
           setPages(urls);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to fetch mangadex pages:', err);
         if (isMounted) {
-          setPages([]);
+          setPageFetchError(err.message || "An unknown error occurred while fetching pages.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingPages(false);
         }
       }
     }
-    fetchEnPages();
+
+    // Only fetch for external english chapters
+    if (chapter.language === 'en' && chapter.external) {
+      fetchEnPages();
+    } else {
+      // For local chapters, just set the pages and finish loading
+      setPages(chapter.pages || []);
+      setIsLoadingPages(false);
+    }
+    
     return () => { isMounted = false; };
-  }, [chapter.id, chapter.language, chapter.external]);
+  }, [chapter.id, chapter.language, chapter.external, chapter.pages]); // Rerun when chapter changes
 
   // Load settings from localStorage on component mount
   useEffect(() => {
@@ -386,109 +435,59 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
     return Math.min(100, Math.max(0, percentage));
   };
 
-  // Simplified IntersectionObserver for Long Strip mode
-  useEffect(() => {
-    if (readingMode !== "Long Strip" || !longStripRef.current || totalPages === 0) return;
-    
-    const observerOptions = {
-      root: longStripRef.current,
-      rootMargin: '-20% 0px -20% 0px', // Only trigger when page is more centered
-      threshold: [0.3, 0.7], // Multiple thresholds for better detection
-    };
-    
-    const handleIntersection = (entries: IntersectionObserverEntry[]) => {
-      let mostVisibleEntry: IntersectionObserverEntry | null = null;
-      let highestRatio = 0;
-      
-      for (const entry of entries) {
-        if (entry.isIntersecting && entry.intersectionRatio > highestRatio) {
-          mostVisibleEntry = entry;
-          highestRatio = entry.intersectionRatio;
-        }
-      }
-
-      if (mostVisibleEntry) {
-        const pageIndex = Number(mostVisibleEntry.target.getAttribute('data-page-index'));
-        if (!isNaN(pageIndex) && pageIndex !== currentVisiblePage) {
-          setCurrentVisiblePage(pageIndex);
-          pageProgressRef.current = pageIndex;
-        }
-      }
-    };
-    
-    const observer = new IntersectionObserver(handleIntersection, observerOptions);
-    
-    // Wait a bit for pages to be rendered before observing
-    const timer = setTimeout(() => {
-      const elements = longStripRef.current?.querySelectorAll('[data-page-element="true"]');
-      if (elements) {
-        elements.forEach(element => {
-          observer.observe(element);
-        });
-      }
-    }, 100);
-    
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
-    };
-  }, [readingMode, totalPages, currentVisiblePage]); // Removed isLongStripStabilized dependency
-
-  // Initialize currentVisiblePage for Long Strip mode
-  useEffect(() => {
-    if (readingMode === "Long Strip" && initialPage > 0 && longStripRef.current) {
-      const timer = setTimeout(() => {
-        setCurrentVisiblePage(Math.min(initialPage, totalPages - 1));
-        pageProgressRef.current = Math.min(initialPage, totalPages - 1);
-      }, 200);
-      
-      return () => clearTimeout(timer);
-    } else if (readingMode === "Long Strip") {
-      // Reset to 0 when switching to long strip
-      setCurrentVisiblePage(0);
-      pageProgressRef.current = 0;
-    }
-  }, [readingMode, initialPage, totalPages]);
-
-  // Long Strip stabilization
-  useEffect(() => {
-    if (readingMode === "Long Strip" && !isLongStripStabilized) {
-      const timer = setTimeout(() => {
-        setIsLongStripStabilized(true);
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-    
-    if (readingMode !== "Long Strip") {
-      setIsLongStripStabilized(false);
-    }
-  }, [readingMode, isLongStripStabilized]);
-
   useEffect(() => {
     if (readingMode !== "Long Strip" || !longStripRef.current) return;
     
     const handleScroll = () => {
       if (!longStripRef.current) return;
       
-      // Update scroll position for other features that might need it
       const container = longStripRef.current;
-      const { scrollTop } = container;
+      const { scrollTop, scrollHeight, clientHeight } = container;
       
-      // Store scroll position for other features
-      longStripScrollYRef.current = scrollTop;
+      const scrollableHeight = scrollHeight - clientHeight;
+      if (scrollableHeight <= 0) {
+        setLongStripProgress(100);
+        return;
+      }
+      
+      const progress = (scrollTop / scrollableHeight) * 100;
+      setLongStripProgress(progress);
+      
+      // Also update the visible page for reading history sync
+      const elements = Array.from(container.querySelectorAll('[data-page-index]'));
+      const centerLine = scrollTop + clientHeight / 2;
+
+      let closestPage = 0;
+      let minDistance = Infinity;
+
+      elements.forEach(el => {
+        const pageElement = el as HTMLElement;
+        const pageTop = pageElement.offsetTop;
+        const pageBottom = pageTop + pageElement.offsetHeight;
+        const pageCenter = pageTop + pageElement.offsetHeight / 2;
+        const distance = Math.abs(centerLine - pageCenter);
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPage = parseInt(pageElement.dataset.pageIndex || '0', 10);
+        }
+      });
+      
+      if (closestPage !== currentVisiblePage) {
+        setCurrentVisiblePage(closestPage);
+      }
     };
     
     const scrollContainer = longStripRef.current;
     scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-    scrollListenerRef.current = handleScroll;
+    
+    // Initial call
+    handleScroll();
     
     return () => {
-      if (scrollContainer && scrollListenerRef.current) {
-        scrollContainer.removeEventListener('scroll', scrollListenerRef.current);
-      }
+      scrollContainer.removeEventListener('scroll', handleScroll);
     };
-  }, [readingMode]);
+  }, [readingMode, pages, currentVisiblePage]);
 
   // Updated reading progress tracking
   useEffect(() => {
@@ -620,6 +619,8 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
       setShowChapterList(!showChapterList);
     } else if (e.key === "m") {
       toggleComments();
+    } else if (e.key === "z") {
+      setIsMagnifierActive(prev => !prev);
     } else if (e.key === "[" || e.key === "PageUp") {
       navigateToPrevChapter()
     } else if (e.key === "]" || e.key === "PageDown") {
@@ -660,23 +661,54 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
     alt,
     index,
     className,
-    mode
+    mode,
+    isMagnifierActive,
+    onMagnifierMove,
+    onMagnifierHide,
   }: {
     src: string;
     alt: string;
     index: number;
     className?: string;
     mode?: ReadingMode;
+    isMagnifierActive: boolean;
+    onMagnifierMove: (props: any) => void;
+    onMagnifierHide: () => void;
   }) => {
     const cacheKey = `${chapter.number}-${index}-${src}`;
     const [isLoaded, setIsLoaded] = useState(preloadedImages[cacheKey] || false);
     const currentMode = mode || readingMode;
+    const imageRef = useRef<HTMLImageElement>(null);
 
     useEffect(() => {
       if (preloadedImages[cacheKey] && !isLoaded) {
         setIsLoaded(true);
       }
     }, [cacheKey, preloadedImages, isLoaded]);
+
+    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!isMagnifierActive || !imageRef.current) return;
+
+      const img = imageRef.current;
+      const rect = img.getBoundingClientRect();
+
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const MAGNIFIER_SIZE = 200;
+      const ZOOM_LEVEL = 2.5;
+
+      onMagnifierMove({
+        visible: true,
+        x: e.clientX,
+        y: e.clientY,
+        bgX: -(x * ZOOM_LEVEL - MAGNIFIER_SIZE / 2),
+        bgY: -(y * ZOOM_LEVEL - MAGNIFIER_SIZE / 2),
+        bgWidth: img.offsetWidth * ZOOM_LEVEL,
+        bgHeight: img.offsetHeight * ZOOM_LEVEL,
+        imageSrc: src,
+      });
+    };
 
     return (
       <div
@@ -686,9 +718,12 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
         )}
         data-page-element="true"
         data-page-index={index}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={onMagnifierHide}
       >
         {!isLoaded && <PageSkeleton className={className} mode={currentMode} />}
         <img
+          ref={imageRef}
           src={src}
           alt={alt}
           className={cn(
@@ -927,13 +962,31 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
     }
   }, [currentVisiblePage, readingMode, showProgressBar]);
 
-  // If pages still empty (fetch failed) show fallback message
-  if (chapter.language === 'en' && pages.length === 0) {
+  const progressBarWidth = useMemo(() => {
+    if (readingMode !== "Long Strip") return "0%";
+    return `${longStripProgress}%`;
+  }, [readingMode, longStripProgress]);
+
+  // Handle loading state
+  if (isLoadingPages) {
     return (
-      <div className="flex items-center justify-center h-full text-center p-8">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+        <div className="flex flex-col items-center">
+          <Loader2 className="h-10 w-10 animate-spin text-purple-400 mb-4" />
+          <p className="text-gray-300">იტვირთება თავი...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle fetch failure or empty pages for English chapters
+  if (pageFetchError || (chapter.language === 'en' && pages.length === 0)) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center h-full text-center p-8 bg-black">
         <div className="max-w-md">
           <h2 className="text-2xl font-bold mb-4">Failed to load English chapter</h2>
-          <p className="text-gray-400 mb-6">We couldn't retrieve images from MangaDex. Please try again later or switch to Georgian version.</p>
+          <p className="text-gray-400 mb-6">We couldn't retrieve images from MangaDex. Please try again later or switch to the Georgian version.</p>
+          {pageFetchError && <p className="text-xs text-red-400/70 mb-4 font-mono bg-red-900/20 p-2 rounded">Error: {pageFetchError}</p>}
           <Button onClick={onClose}>Close Reader</Button>
         </div>
       </div>
@@ -1053,6 +1106,9 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                         index={pageIndex}
                         className="w-full block"
                         mode="Long Strip"
+                        isMagnifierActive={isMagnifierActive}
+                        onMagnifierMove={setMagnifierProps}
+                        onMagnifierHide={() => setMagnifierProps(p => ({ ...p, visible: false }))}
                       />
                       {showPageNumbers && (
                         <div className="text-center text-xs text-gray-500 mt-1 select-none">
@@ -1118,6 +1174,7 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                   {readingMode === "Double Page" ? (
                     <div className={cn(
                       "flex items-center justify-center w-full h-full PageImage_wrapper",
+                      isMagnifierActive ? 'cursor-none' : '',
                       showPageGap ? "gap-4" : "gap-0"
                       )}>
                       <div className="w-1/2 h-full flex-shrink-0 PageImage_wrapper_child">
@@ -1127,6 +1184,9 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                           index={readingDirection === 'Left to Right' && currentPage > 0 ? currentPage - 1 : currentPage}
                           className="h-full w-full"
                           mode="Double Page"
+                          isMagnifierActive={isMagnifierActive}
+                          onMagnifierMove={setMagnifierProps}
+                          onMagnifierHide={() => setMagnifierProps(p => ({ ...p, visible: false }))}
                         />
                       </div>
                       { (readingDirection === 'Left to Right' ? currentPage : currentPage + 1) < totalPages && (
@@ -1137,6 +1197,9 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                             index={readingDirection === 'Left to Right' ? currentPage : currentPage + 1}
                             className="h-full w-full"
                             mode="Double Page"
+                            isMagnifierActive={isMagnifierActive}
+                            onMagnifierMove={setMagnifierProps}
+                            onMagnifierHide={() => setMagnifierProps(p => ({ ...p, visible: false }))}
                           />
                         </div>
                       )}
@@ -1150,13 +1213,16 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                       )}
                     </div>
                   ) : (
-                    <div className="w-full h-full relative PageImage_wrapper">
+                    <div className={cn("w-full h-full relative PageImage_wrapper", isMagnifierActive ? 'cursor-none' : '')}>
                       <PageImage 
                         src={pages[currentPage]} 
                         alt={`Page ${currentPage + 1}`}
                         index={currentPage}
                         className="h-full w-full"
                         mode="Single Page"
+                        isMagnifierActive={isMagnifierActive}
+                        onMagnifierMove={setMagnifierProps}
+                        onMagnifierHide={() => setMagnifierProps(p => ({ ...p, visible: false }))}
                       />
                       
                       {showPageNumbers && (
@@ -1169,6 +1235,20 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                 </motion.div>
               </AnimatePresence>
             </>
+          )}
+          
+          {isMagnifierActive && magnifierProps.visible && (
+            <div
+              className="absolute top-0 left-0 z-50 pointer-events-none rounded-full border-4 border-white/80 bg-no-repeat shadow-2xl bg-black"
+              style={{
+                width: 200,
+                height: 200,
+                transform: `translate(${magnifierProps.x - 100}px, ${magnifierProps.y - 100}px)`,
+                backgroundImage: `url(${magnifierProps.imageSrc})`,
+                backgroundPosition: `${magnifierProps.bgX}px ${magnifierProps.bgY}px`,
+                backgroundSize: `${magnifierProps.bgWidth}px ${magnifierProps.bgHeight}px`,
+              }}
+            />
           )}
           
           {readingMode === "Long Strip" && (showControls || !autoHideControls) && (
@@ -1434,7 +1514,7 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                                               <motion.div
                         className="h-full bg-gradient-to-r from-purple-500 to-blue-500 shadow-[0_0_8px_rgba(138,43,226,0.6)]"
                         initial={{ width: "0%" }}
-                        animate={{ width: `${calculateLongStripProgress()}%` }}
+                        animate={{ width: progressBarWidth }}
                         transition={{ duration: 0.2, ease: "easeOut" }}
                       />
                       </div>
@@ -1595,6 +1675,18 @@ export function MangaReader({ chapter, chapterList, onClose, onChapterSelect, ma
                     title="პარამეტრები (S)"
                   >
                     <Settings className="h-5 w-5" />
+                  </motion.button>
+                  <motion.button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsMagnifierActive(prev => !prev);
+                    }}
+                    className={`p-1.5 rounded-full hover:bg-gray-800/70 transition-colors ${isMagnifierActive ? "text-purple-400 bg-gray-700/50" : "text-gray-300 hover:text-white"}`}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    title="Magnifier (Z)"
+                  >
+                    <Search className="h-5 w-5" />
                   </motion.button>
                   <motion.button
                     onClick={(e) => {

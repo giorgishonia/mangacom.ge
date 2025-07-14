@@ -76,7 +76,7 @@ async function syncProgressToSupabase(progress: ReadingProgress): Promise<void> 
       user_id: userId,
       manga_id: progress.mangaId,
       chapter_id: progress.chapterId,
-      current_page: progress.currentPage,
+      page: progress.currentPage,
       total_pages: progress.totalPages,
       updated_at: new Date().toISOString(),
       last_read: new Date(progress.lastRead).toISOString(),
